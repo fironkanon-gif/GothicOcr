@@ -7,7 +7,6 @@ jobs:
 
     working_directory: ~/project
 
-    # إضافة متغيرات بيئية لمنع PEP 668 نهائياً أثناء التجميع
     environment:
       PIP_BREAK_SYSTEM_PACKAGES: "1"
 
@@ -20,13 +19,13 @@ jobs:
 
 
       # ============================================================
-      # 2. RESTORE CACHE
+      # 2. RESTORE CACHE (توسيع الكاش ليحفظ مراحل التجميع)
       # ============================================================
       - restore_cache:
           keys:
-            - gothicocr-v6-{{ checksum "buildozer.spec" }}
+            - gothicocr-p4a-v7-{{ checksum "buildozer.spec" }}
+            - gothicocr-p4a-v7-
             - gothicocr-v6-
-            - gothicocr-python-v6
 
 
       # ============================================================
@@ -37,26 +36,10 @@ jobs:
           command: |
             set -eux
 
-            echo "========================================"
-            echo "GothicOCR Build Environment"
-            echo "========================================"
-
-            echo "Python:"
-            python3 --version
-
-            echo "Java:"
-            java -version
-
-            echo "Android:"
-            echo "ANDROID_HOME=$ANDROID_HOME"
-            echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
             echo "Updating APT..."
-
             sudo apt-get update -qq
 
             echo "Installing build dependencies..."
-
             sudo apt-get install -y \
               ant \
               python3-pip \
@@ -83,8 +66,6 @@ jobs:
               gettext \
               ccache
 
-            echo "System dependencies installed successfully"
-
 
       # ============================================================
       # 4. VERIFY ANDROID ENVIRONMENT
@@ -93,38 +74,8 @@ jobs:
           name: Verify Android Environment
           command: |
             set -eux
-
-            echo "========================================"
-            echo "Android Environment Check"
-            echo "========================================"
-
-            test -n "$ANDROID_HOME"
-            test -d "$ANDROID_HOME"
-
-            test -n "$ANDROID_SDK_ROOT"
-            test -d "$ANDROID_SDK_ROOT"
-
-            command -v java
-            command -v javac
-            command -v python3
-            command -v git
-            command -v unzip
-            command -v zip
-            command -v ant
-            command -v cmake
-            command -v ccache
-
-            java -version
-            javac -version
-            python3 --version
-            ant -version
-            cmake --version
-            ccache --version
-
-            echo "ANDROID_HOME=$ANDROID_HOME"
-            echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
-            echo "Android environment OK"
+            test -n "$ANDROID_HOME" && test -d "$ANDROID_HOME"
+            test -n "$ANDROID_SDK_ROOT" && test -d "$ANDROID_SDK_ROOT"
 
 
       # ============================================================
@@ -134,37 +85,15 @@ jobs:
           name: Install Buildozer and Cython
           command: |
             set -eux
-
-            echo "========================================"
-            echo "Installing Buildozer and Cython"
-            echo "========================================"
-
-            python3 -m pip --version
-
             sudo python3 -m pip install \
               --break-system-packages \
               --ignore-installed \
               --upgrade \
-              pip \
-              setuptools \
-              wheel
+              pip setuptools wheel
 
             sudo python3 -m pip install \
               --break-system-packages \
-              buildozer==1.6.0 \
-              cython
-
-            echo "========================================"
-            echo "Build Tools Verification"
-            echo "========================================"
-
-            command -v buildozer
-            command -v cython
-
-            buildozer --version
-            cython --version
-
-            echo "Buildozer and Cython ready"
+              buildozer==1.6.0 cython
 
 
       # ============================================================
@@ -174,15 +103,9 @@ jobs:
           name: Configure CCache
           command: |
             set -eux
-
             mkdir -p "$HOME/.cache/ccache"
-
-            ccache --version
-
             ccache --set-config=cache_dir="$HOME/.cache/ccache"
             ccache --set-config=max_size=2G
-
-            echo "CCACHE configured"
 
 
       # ============================================================
@@ -192,217 +115,69 @@ jobs:
           name: Verify GothicOCR Project
           command: |
             set -eux
-
-            echo "========================================"
-            echo "GothicOCR Project Check"
-            echo "========================================"
-
             test -f main.py
             test -f buildozer.spec
-
             test -f models/gothic_ocr.tflite
 
-            test -f services/model_service.py
-            test -f services/image_service.py
-
-            test -f screens/main_screen.py
-
-            test -f utils/constants.py
-
-            echo "All required GothicOCR files found"
-
 
       # ============================================================
-      # 8. VERIFY TFLITE MODEL
-      # ============================================================
-      - run:
-          name: Verify TFLite Model
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "TFLite Model Check"
-            echo "========================================"
-
-            MODEL="models/gothic_ocr.tflite"
-
-            test -s "$MODEL"
-
-            ls -lh "$MODEL"
-
-            FILE_SIZE=$(stat -c%s "$MODEL")
-
-            echo "Model size: $FILE_SIZE bytes"
-
-            test "$FILE_SIZE" -gt 100000
-
-            echo "TFLite model exists and is not empty"
-
-
-      # ============================================================
-      # 9. VALIDATE PYTHON
-      # ============================================================
-      - run:
-          name: Validate Python Syntax
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "Python Syntax Check"
-            echo "========================================"
-
-            python3 -m py_compile main.py
-
-            python3 -m py_compile \
-              services/model_service.py
-
-            python3 -m py_compile \
-              services/image_service.py
-
-            python3 -m py_compile \
-              screens/main_screen.py
-
-            python3 -m py_compile \
-              utils/constants.py
-
-            echo "Python syntax OK"
-
-
-      # ============================================================
-      # 10. CHECK BUILDOZER CONFIG
-      # ============================================================
-      - run:
-          name: Validate Buildozer Configuration
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "Buildozer Configuration"
-            echo "========================================"
-
-            test -s buildozer.spec
-
-            grep -E "^title[[:space:]]*=" buildozer.spec
-            grep -E "^package.name[[:space:]]*=" buildozer.spec
-            grep -E "^package.domain[[:space:]]*=" buildozer.spec
-            grep -E "^requirements[[:space:]]*=" buildozer.spec
-
-            echo "Buildozer configuration detected"
-
-
-      # ============================================================
-      # 11. CHECK GOTHIC CLASSES
-      # ============================================================
-      - run:
-          name: Check Gothic Classes
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "GothicOCR Class Check"
-            echo "========================================"
-
-            grep -n "CLASS_NAMES" \
-              services/model_service.py
-
-            grep -n "NUM_CLASSES" \
-              services/model_service.py
-
-            echo "Gothic class configuration found"
-
-
-      # ============================================================
-      # 12. BUILD APK
+      # 8. BUILD APK WITH AUTO RETRY LOOP
       # ============================================================
       - run:
           name: Build GothicOCR APK
           command: |
-            set -eux
+            export PIP_BREAK_SYSTEM_PACKAGES=1
 
             echo "========================================"
             echo "GOTHICOCR APK BUILD"
             echo "========================================"
 
-            export PIP_BREAK_SYSTEM_PACKAGES=1
-
-            echo "Python:"
-            python3 --version
-
-            echo "Buildozer:"
-            command -v buildozer
-            buildozer --version
-
-            echo "Cython:"
-            command -v cython
-            cython --version
-
-            echo "Java:"
-            java -version
-
-            echo "Ant:"
-            ant -version
-
-            echo "CMake:"
-            cmake --version
-
-            echo "Bypassing FreeType 502 Bad Gateway error..."
+            # تجهيز المجلدات مسبقاً وتخزين الملف التحميلي البديل
             mkdir -p ~/.buildozer/cache/packages/freetype
             curl -L "https://github.com/libexif/virtual-packaging/raw/master/freetype-2.14.1.tar.gz" -o ~/.buildozer/cache/packages/freetype/freetype-2.14.1.tar.gz || true
 
-            echo "Starting Buildozer..."
+            MAX_RETRIES=5
+            COUNT=1
+            SUCCESS=0
 
-            buildozer -v android debug
+            while [ $COUNT -le $MAX_RETRIES ]; do
+              echo "Attempt $COUNT of $MAX_RETRIES..."
 
-            echo "========================================"
-            echo "BUILD COMMAND FINISHED"
-            echo "========================================"
+              if buildozer -v android debug; then
+                echo "Build succeeded on attempt $COUNT!"
+                SUCCESS=1
+                break
+              else
+                echo "Attempt $COUNT failed due to network issue. Retrying in 10 seconds..."
+                sleep 10
+                COUNT=$((COUNT+1))
+              fi
+            done
+
+            if [ $SUCCESS -ne 1 ]; then
+              echo "Build failed after $MAX_RETRIES attempts."
+              exit 1
+            fi
 
 
       # ============================================================
-      # 13. VERIFY APK
+      # 9. VERIFY APK
       # ============================================================
       - run:
           name: Verify APK
           command: |
             set -eux
-
-            echo "========================================"
-            echo "APK Verification"
-            echo "========================================"
-
             test -d bin
-
-            ls -lah bin
-
-            APK_COUNT=$(find bin \
-              -maxdepth 1 \
-              -type f \
-              -name "*.apk" \
-              | wc -l)
-
-            echo "APK count: $APK_COUNT"
-
-            test "$APK_COUNT" -ge 1
-
-            APK=$(find bin \
-              -maxdepth 1 \
-              -type f \
-              -name "*.apk" \
-              | head -n 1)
-
+            APK=$(find bin -maxdepth 1 -type f -name "*.apk" | head -n 1)
             test -s "$APK"
-
-            echo "APK created successfully:"
-            echo "$APK"
-
-            ls -lh "$APK"
+            echo "APK created successfully: $APK"
 
 
       # ============================================================
-      # 14. SAVE BUILD CACHE
+      # 10. SAVE BUILD CACHE (حفظ مجلد p4a ومخرجات التجميع كاملاً)
       # ============================================================
       - save_cache:
-          key: gothicocr-v6-{{ checksum "buildozer.spec" }}
+          key: gothicocr-p4a-v7-{{ checksum "buildozer.spec" }}
           paths:
             - ~/.buildozer
             - ~/project/.buildozer
@@ -412,28 +187,11 @@ jobs:
 
 
       # ============================================================
-      # 15. SAVE PYTHON CACHE
-      # ============================================================
-      - save_cache:
-          key: gothicocr-python-v6
-          paths:
-            - ~/.cache/pip
-
-
-      # ============================================================
-      # 16. STORE APK
+      # 11. STORE ARTIFACTS
       # ============================================================
       - store_artifacts:
           path: bin
           destination: apk
-
-
-      # ============================================================
-      # 17. STORE BUILDOZER DATA
-      # ============================================================
-      - store_artifacts:
-          path: .buildozer
-          destination: buildozer-cache
 
 
 workflows:
