@@ -1,7 +1,3 @@
-# ============================================================
-# GOTHIC OCR — CIRCLECI CONFIGURATION
-# ============================================================
-
 version: 2.1
 
 jobs:
@@ -9,7 +5,7 @@ jobs:
   build_android:
 
     machine:
-      image: android:current
+      image: android:2026.05.1
 
     resource_class: large.gen2
 
@@ -17,42 +13,72 @@ jobs:
 
     steps:
 
+      # =====================================================
+      # 1. CHECKOUT
+      # =====================================================
+
       - checkout
 
+      # =====================================================
+      # 2. SYSTEM INFORMATION
+      # =====================================================
+
       - run:
-          name: Check Android build environment
+          name: Inspect build machine
           command: |
-            set -e
+            set -eux
 
-            echo "=========================================="
-            echo "GOTHIC OCR — ANDROID BUILD ENVIRONMENT"
-            echo "=========================================="
+            echo "========================================"
+            echo "GOTHIC OCR BUILD MACHINE"
+            echo "========================================"
 
+            uname -a
+
+            echo
+            echo "Ubuntu:"
+            lsb_release -a || true
+
+            echo
+            echo "Java:"
             java -version
-            python3 --version
 
             echo
-            echo "ANDROID SDK:"
-            echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-not-set}}"
+            echo "Python:"
+            python3 --version || true
 
             echo
-            echo "=========================================="
+            echo "Android SDK:"
+            echo "${ANDROID_HOME:-not-set}"
+
+            echo
+            echo "Android SDK ROOT:"
+            echo "${ANDROID_SDK_ROOT:-not-set}"
+
+            echo
+            echo "========================================"
+
+      # =====================================================
+      # 3. SYSTEM DEPENDENCIES
+      # =====================================================
 
       - run:
-          name: Install Buildozer dependencies
+          name: Install Android build dependencies
           command: |
-            set -e
+            set -eux
 
             sudo apt-get update
 
             sudo apt-get install -y \
+              python3.12 \
+              python3.12-venv \
+              python3.12-dev \
               python3-pip \
-              python3-venv \
               git \
               zip \
               unzip \
               autoconf \
               automake \
+              autopoint \
               libtool \
               pkg-config \
               zlib1g-dev \
@@ -64,70 +90,255 @@ jobs:
               libssl-dev \
               gettext
 
-      - run:
-          name: Create Python build environment
-          command: |
-            set -e
+      # =====================================================
+      # 4. JAVA 17
+      # =====================================================
 
-            python3 -m venv ~/buildozer-venv
+      - run:
+          name: Select Java 17
+          command: |
+            set -eux
+
+            if [ -x /usr/lib/jvm/java-17-openjdk-amd64/bin/java ]; then
+              sudo update-alternatives --set java \
+                /usr/lib/jvm/java-17-openjdk-amd64/bin/java || true
+
+              sudo update-alternatives --set javac \
+                /usr/lib/jvm/java-17-openjdk-amd64/bin/javac || true
+            fi
+
+            java -version
+
+      # =====================================================
+      # 5. PYTHON 3.12 VIRTUAL ENVIRONMENT
+      # =====================================================
+
+      - run:
+          name: Create Python 3.12 build environment
+          command: |
+            set -eux
+
+            python3.12 -m venv ~/buildozer-venv
 
             ~/buildozer-venv/bin/python \
-              -m pip install --upgrade pip setuptools wheel
+              -m pip install --upgrade \
+              pip \
+              setuptools \
+              wheel
 
-            ~/buildozer-venv/bin/pip \
-              install buildozer
+            ~/buildozer-venv/bin/python \
+              -m pip install \
+              "buildozer==1.6.0"
+
+            ~/buildozer-venv/bin/python \
+              --version
+
+            ~/buildozer-venv/bin/buildozer \
+              --version
+
+      # =====================================================
+      # 6. PROJECT STRUCTURE
+      # =====================================================
 
       - run:
           name: Validate GothicOCR project
           command: |
-            set -e
+            set -eux
 
             cd GothicOCR
 
             test -f main.py
             test -f buildozer.spec
+
             test -f models/gothic_ocr.tflite
             test -f data/labels.json
+
             test -f fonts/NotoSansGothic-Regular.ttf
 
+            test -f services/__init__.py
             test -f services/image_service.py
             test -f services/model_service.py
             test -f services/text_decoder.py
 
             echo "Project structure OK."
 
+      # =====================================================
+      # 7. PYTHON SYNTAX
+      # =====================================================
+
       - run:
-          name: Validate Buildozer configuration
+          name: Validate Python source
           command: |
-            set -e
+            set -eux
 
             cd GothicOCR
 
-            ~/buildozer-venv/bin/buildozer --version
+            ~/buildozer-venv/bin/python \
+              -m compileall \
+              -q \
+              main.py \
+              services
+
+            echo "Python syntax OK."
+
+      # =====================================================
+      # 8. LABEL VALIDATION
+      # =====================================================
+
+      - run:
+          name: Validate OCR labels
+          command: |
+            set -eux
+
+            cd GothicOCR
+
+            ~/buildozer-venv/bin/python - <<'PY'
+            import json
+            from pathlib import Path
+
+            labels_path = Path("data/labels.json")
+
+            labels = json.loads(
+                labels_path.read_text(
+                    encoding="utf-8"
+                )
+            )
+
+            assert isinstance(labels, list)
+            assert len(labels) == 25
+            assert all(
+                isinstance(label, str)
+                and label.strip()
+                for label in labels
+            )
+
+            print("Labels:", len(labels))
+            print("Labels validation: OK")
+            PY
+
+      # =====================================================
+      # 9. BUILD CONFIG VALIDATION
+      # =====================================================
+
+      - run:
+          name: Validate Buildozer configuration
+          command: |
+            set -eux
+
+            cd GothicOCR
+
+            ~/buildozer-venv/bin/buildozer \
+              --version
 
             echo
-            echo "Buildozer configuration:"
-
+            echo "Build configuration:"
             grep -E \
-              '^(title|package.name|package.domain|version|requirements|android.api|android.minapi|android.archs|android.ndk|p4a.bootstrap)' \
+              '^(title|package.name|package.domain|version|source.dir|requirements|android.api|android.minapi|android.archs|android.ndk|p4a.bootstrap|p4a.branch)' \
               buildozer.spec
+
+      # =====================================================
+      # 10. ANDROID SDK VALIDATION
+      # =====================================================
+
+      - run:
+          name: Validate Android SDK
+          command: |
+            set -eux
+
+            echo "ANDROID_HOME=${ANDROID_HOME:-}"
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
+
+            test -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+
+            sdkmanager --version
+
+            sdkmanager --list |
+              grep -E \
+              'platforms;android-35|build-tools;35' \
+              | head -20 || true
+
+      # =====================================================
+      # 11. NDK VALIDATION
+      # =====================================================
+
+      - run:
+          name: Validate Android NDK
+          command: |
+            set -eux
+
+            SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+
+            echo "SDK=${SDK}"
+
+            if [ -d "${SDK}/ndk/25.2.9519653" ]; then
+              echo "NDK 25.2.9519653 available."
+            else
+              echo "Requested NDK is not preinstalled."
+              echo "Buildozer/p4a will manage its own NDK."
+            fi
+
+            find "${SDK}/ndk" \
+              -maxdepth 1 \
+              -mindepth 1 \
+              -type d \
+              -print \
+              2>/dev/null || true
+
+      # =====================================================
+      # 12. BUILD CLEANLY
+      # =====================================================
 
       - run:
           name: Build GothicOCR APK
           command: |
-            set -e
+            set -eux
 
             cd GothicOCR
 
-            ~/buildozer-venv/bin/buildozer android debug
+            rm -rf bin
+            rm -rf .buildozer
+
+            ~/buildozer-venv/bin/buildozer \
+              android \
+              debug \
+              log_level=2
+
+      # =====================================================
+      # 13. VERIFY APK
+      # =====================================================
+
+      - run:
+          name: Verify APK
+          command: |
+            set -eux
+
+            cd GothicOCR
+
+            test -d bin
+
+            APK_COUNT=$(find bin \
+              -maxdepth 1 \
+              -type f \
+              -name "*.apk" \
+              | wc -l)
+
+            test "${APK_COUNT}" -ge 1
+
+            echo "APK files:"
+            find bin \
+              -maxdepth 1 \
+              -type f \
+              -name "*.apk" \
+              -print
+
+      # =====================================================
+      # 14. STORE APK ONLY
+      # =====================================================
 
       - store_artifacts:
           path: GothicOCR/bin
           destination: gothicocr-apk
 
-      - store_artifacts:
-          path: GothicOCR/.buildozer
-          destination: buildozer-build-data
 
 workflows:
 
