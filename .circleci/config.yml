@@ -19,14 +19,17 @@ jobs:
 
 
       # ============================================================
-      # 2. RESTORE CACHE
+      # 2. PURGE OLD CACHES
       # ============================================================
-      - restore_cache:
-          keys:
-            - gothicocr-global-cache-v1
-            - gothicocr-buildozer-v8-{{ checksum "buildozer.spec" }}
-            - gothicocr-p4a-v7-
-            - gothicocr-v6-
+      - run:
+          name: Purge Old Caches & Local Recipes
+          command: |
+            set +e
+            rm -rf ~/.buildozer
+            rm -rf ~/project/.buildozer
+            rm -rf ~/project/p4a_recipes
+            rm -rf ~/.cache/pip
+            rm -rf ~/.cache/ccache
 
 
       # ============================================================
@@ -51,85 +54,36 @@ jobs:
 
 
       # ============================================================
-      # 4. PRE-DOWNLOAD & OVERRIDE FREETYPE PACKAGE
+      # 4. PATCH OFFICIAL FREETYPE RECIPE URL DIRECTLY
       # ============================================================
       - run:
-          name: Pre-download FreeType & Set Local Recipe
+          name: Patch Official P4A FreeType Recipe URL
           command: |
             set +e
-            echo "Setting up local recipe and downloads..."
+            echo "Patching FreeType Recipe URL inside pythonforandroid..."
 
-            # 1. مسح الكاش القديم المتضمن للرابط المعطوب
-            rm -rf ~/.buildozer/android/platform/python-for-android 2>/dev/null || true
-            rm -rf ~/project/.buildozer/android/platform/python-for-android 2>/dev/null || true
+            P4A_DIR=$(python3 -c "import pythonforandroid; import os; print(os.path.dirname(pythonforandroid.__file__))" 2>/dev/null)
+            OLD_URL="https://download.savannah.gnu.org/releases/freetype/"
+            NEW_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/"
 
-            # 2. إنشاء المجلد وملف الـ Recipe المحلي
-            mkdir -p ~/project/p4a_recipes/freetype
-            echo "from pythonforandroid.recipe import Recipe" > ~/project/p4a_recipes/freetype/__init__.py
-            echo "class FreeTypeRecipe(Recipe):" >> ~/project/p4a_recipes/freetype/__init__.py
-            echo "    version = '2.14.1'" >> ~/project/p4a_recipes/freetype/__init__.py
-            echo "    url = 'https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz'" >> ~/project/p4a_recipes/freetype/__init__.py
-            echo "    built_libraries = {'libfreetype.so': 'objs/.libs'}" >> ~/project/p4a_recipes/freetype/__init__.py
-            echo "recipe = FreeTypeRecipe()" >> ~/project/p4a_recipes/freetype/__init__.py
-
-            # 3. تنزيل الحزمة مسبقاً وتوزيعها
-            FT_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/freetype-2.14.1.tar.gz"
-            TMP_FILE="/tmp/freetype-2.14.1.tar.gz"
-            curl -L "$FT_URL" -o "$TMP_FILE"
-
-            PATHS=(
-              "$HOME/.buildozer/cache/packages/freetype"
-              "$HOME/.buildozer/android/platform/build-armeabi-v7a_arm64-v8a/packages/freetype"
-              "$HOME/.buildozer/android/platform/build-arm64-v8a/packages/freetype"
-              "$HOME/project/.buildozer/android/platform/build-armeabi-v7a_arm64-v8a/packages/freetype"
-            )
-
-            for DIR in "${PATHS[@]}"; do
-              mkdir -p "$DIR"
-              cp "$TMP_FILE" "$DIR/freetype-2.14.1.tar.gz" 2>/dev/null || true
-              touch "$DIR/.mark-freetype-2.14.1.tar.gz" 2>/dev/null || true
-            done
+            if [ -d "$P4A_DIR" ]; then
+              sudo find "$P4A_DIR" -type f -name "*.py" -exec sed -i "s|$OLD_URL|$NEW_URL|g" {} +
+              echo "P4A System Recipes patched successfully!"
+            fi
 
 
       # ============================================================
-      # 5. BUILD APK WITH AUTOMATIC RETRY & HOT-PATCH
+      # 5. BUILD APK (Single Run - No Retries)
       # ============================================================
       - run:
-          name: Build GothicOCR APK
+          name: Build GothicOCR APK (Direct Run)
           command: |
             export PIP_BREAK_SYSTEM_PACKAGES=1
-            set +e
+            
+            # تعديل أي نسخة يتم استنساخها أثناء البناء مسبقاً
+            find ~/.buildozer ~/project -type f -name "*.py" -exec sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' {} + 2>/dev/null || true
 
-            MAX_RETRIES=5
-            COUNT=1
-            SUCCESS=0
-
-            while [ $COUNT -le $MAX_RETRIES ]; do
-              echo "----------------------------------------"
-              echo "Attempt $COUNT of $MAX_RETRIES..."
-              echo "----------------------------------------"
-
-              # تبديل أي رابط ينشأ ديناميكياً أثناء البناء
-              find ~/.buildozer ~/project -type f -name "*.py" -exec sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' {} + 2>/dev/null || true
-
-              buildozer -v android debug
-              STATUS=$?
-
-              if [ $STATUS -eq 0 ]; then
-                echo "Build succeeded on attempt $COUNT!"
-                SUCCESS=1
-                break
-              else
-                echo "Attempt $COUNT failed. Retrying in 10 seconds..."
-                sleep 10
-                COUNT=$((COUNT+1))
-              fi
-            done
-
-            if [ $SUCCESS -ne 1 ]; then
-              echo "Build failed after $MAX_RETRIES attempts."
-              exit 1
-            fi
+            buildozer -v android debug
 
 
       # ============================================================
@@ -146,10 +100,10 @@ jobs:
 
 
       # ============================================================
-      # 7. SAVE GLOBAL CACHE
+      # 7. SAVE CLEAN CACHE
       # ============================================================
       - save_cache:
-          key: gothicocr-global-cache-v1
+          key: gothicocr-single-run-v1
           paths:
             - ~/.buildozer
             - ~/project/.buildozer
