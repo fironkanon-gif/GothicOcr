@@ -13,39 +13,44 @@ jobs:
       - run:
           name: Check Android Environment
           command: |
-            echo "=========================================="
-            echo "Android Environment"
-            echo "=========================================="
             echo "ANDROID_HOME=$ANDROID_HOME"
             echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
             java -version
             python3 --version
-            pip3 --version
-            adb version || true
+            command -v sdkmanager || true
+            command -v ndk-build || true
 
       - run:
-          name: Install Python Build Dependencies
-          command: |
-            python3 -m pip install --upgrade pip
-            python3 -m pip install buildozer cython
-
-      - run:
-          name: Verify Project
+          name: Check GothicOCR Files
           command: |
             test -f main.py
             test -f buildozer.spec
             test -f models/gothic_ocr.tflite
-            test -f services/image_service.py
             test -f services/model_service.py
-            test -f services/__init__.py
-            test -f utils/constants.py
+            test -f services/image_service.py
             test -f screens/main_screen.py
-            echo "Project structure OK"
+            test -f utils/constants.py
+            echo "All required GothicOCR files found"
 
       - run:
-          name: Build APK
+          name: Install Buildozer
           command: |
-            buildozer android debug
+            python3 -m pip install --user buildozer==1.6.0 cython
+
+      - run:
+          name: Validate Python
+          command: |
+            python3 -m py_compile main.py
+            python3 -m py_compile services/model_service.py
+            python3 -m py_compile services/image_service.py
+            python3 -m py_compile screens/main_screen.py
+            python3 -m py_compile utils/constants.py
+            echo "Python syntax OK"
+
+      - run:
+          name: Build GothicOCR APK
+          command: |
+            buildozer -v android debug
 
       - store_artifacts:
           path: bin
