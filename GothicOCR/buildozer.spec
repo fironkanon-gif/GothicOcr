@@ -55,7 +55,7 @@ fullscreen = 0
 # Android permissions
 # ------------------------------------------------------------
 
-android.permissions = READ_MEDIA_IMAGES
+android.permissions = READ_EXTERNAL_STORAGE,READ_MEDIA_IMAGES
 
 
 # ------------------------------------------------------------
@@ -64,7 +64,7 @@ android.permissions = READ_MEDIA_IMAGES
 
 android.api = 35
 
-android.minapi = 24
+android.minapi = 23
 
 
 # ------------------------------------------------------------
@@ -78,7 +78,7 @@ android.archs = arm64-v8a
 # Android NDK
 # ------------------------------------------------------------
 
-android.ndk = 28c
+android.ndk = 25b
 
 
 # ------------------------------------------------------------
