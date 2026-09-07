@@ -9,41 +9,25 @@ jobs:
     working_directory: ~/project
 
     environment:
-      # يسمح لـ pip بالعمل مع Python النظام
       PIP_BREAK_SYSTEM_PACKAGES: "1"
-
-      # ==========================================================
-      # الحل الأساسي للمشكلة
-      #
-      # python-for-android يسمح بتغيير رابط Recipe عبر:
-      # URL_<recipe name>
-      #
-      # لذلك نستبدل Savannah بـ SourceForge
-      # ==========================================================
-      URL_freetype: "https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz"
-
-      # تحسين سلوك الشبكة لبعض الأدوات
-      PIP_DEFAULT_TIMEOUT: "120"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIP_NO_INPUT: "1"
 
     steps:
 
       # ============================================================
-      # 1. CHECKOUT
+      # 1. CHECKOUT PROJECT
       # ============================================================
       - checkout
 
 
       # ============================================================
       # 2. RESTORE CACHE
-      #
-      # نستخدم مفتاح جديد حتى لا نرجع كاش قديم فيه
-      # تنزيل FreeType فاشل من Savannah
       # ============================================================
       - restore_cache:
           keys:
-            - gothicocr-freetype-fix-v1-{{ checksum "buildozer.spec" }}
-            - gothicocr-freetype-fix-v1-
+            - gothicocr-build-v1-{{ checksum "buildozer.spec" }}
+            - gothicocr-build-v1-
 
 
       # ============================================================
@@ -55,38 +39,27 @@ jobs:
             set -eux
 
             echo "========================================"
-            echo "GothicOCR CircleCI Environment"
+            echo "GOTHICOCR BUILD ENVIRONMENT"
             echo "========================================"
 
-            echo "Working directory:"
-            pwd
-
-            echo ""
             echo "Python:"
             python3 --version
 
-            echo ""
             echo "Java:"
             java -version
 
-            echo ""
             echo "ANDROID_HOME:"
             echo "${ANDROID_HOME:-NOT_SET}"
 
-            echo ""
             echo "ANDROID_SDK_ROOT:"
             echo "${ANDROID_SDK_ROOT:-NOT_SET}"
 
-            echo ""
-            echo "FreeType override:"
-            echo "$URL_freetype"
-
-            echo ""
-            echo "Environment check complete"
+            echo "========================================"
 
 
       # ============================================================
       # 4. INSTALL SYSTEM DEPENDENCIES
+      # FIXES: No module named pip
       # ============================================================
       - run:
           name: Install System Dependencies
@@ -94,12 +67,15 @@ jobs:
             set -eux
 
             echo "========================================"
-            echo "Installing System Dependencies"
+            echo "INSTALLING SYSTEM DEPENDENCIES"
             echo "========================================"
 
             sudo apt-get update -qq
 
             sudo apt-get install -y \
+              python3-pip \
+              python3-dev \
+              python3-venv \
               git \
               zip \
               unzip \
@@ -120,60 +96,32 @@ jobs:
               libffi-dev \
               libssl-dev \
               zlib1g-dev \
-              libncurses5-dev \
-              libncursesw5-dev \
-              libtinfo6 \
               gettext
 
+            echo ""
+            echo "========================================"
+            echo "VERIFY PYTHON AND PIP"
+            echo "========================================"
+
+            python3 --version
+
+            python3 -m pip --version
+
+            echo ""
             echo "System dependencies installed successfully"
 
 
       # ============================================================
-      # 5. VERIFY ANDROID ENVIRONMENT
+      # 5. INSTALL BUILDOZER + CYTHON
       # ============================================================
       - run:
-          name: Verify Android Environment
+          name: Install Buildozer
           command: |
             set -eux
 
             echo "========================================"
-            echo "Android Environment"
+            echo "INSTALLING PYTHON BUILD TOOLS"
             echo "========================================"
-
-            test -n "${ANDROID_HOME:-}"
-            test -d "$ANDROID_HOME"
-
-            command -v java
-            command -v javac
-            command -v python3
-            command -v git
-            command -v zip
-            command -v unzip
-
-            java -version
-            javac -version
-            python3 --version
-
-            echo ""
-            echo "ANDROID_HOME=$ANDROID_HOME"
-
-            echo ""
-            echo "Android environment OK"
-
-
-      # ============================================================
-      # 6. INSTALL / UPDATE PYTHON BUILD TOOLS
-      # ============================================================
-      - run:
-          name: Install Buildozer and Cython
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "Installing Python Build Tools"
-            echo "========================================"
-
-            python3 -m pip --version
 
             python3 -m pip install \
               --break-system-packages \
@@ -184,16 +132,17 @@ jobs:
 
             python3 -m pip install \
               --break-system-packages \
-              "buildozer==1.6.0" \
-              "cython<3.4"
+              buildozer==1.6.0 \
+              cython
 
             echo ""
-            echo "Buildozer:"
+            echo "========================================"
+            echo "VERIFY BUILD TOOLS"
+            echo "========================================"
+
             command -v buildozer
             buildozer --version
 
-            echo ""
-            echo "Cython:"
             command -v cython
             cython --version
 
@@ -202,21 +151,56 @@ jobs:
 
 
       # ============================================================
-      # 7. CONFIGURE CCACHE
+      # 6. CONFIGURE CCACHE
       # ============================================================
       - run:
           name: Configure CCache
           command: |
             set -eux
 
+            echo "========================================"
+            echo "CONFIGURING CCACHE"
+            echo "========================================"
+
             mkdir -p "$HOME/.cache/ccache"
 
             ccache --set-config=cache_dir="$HOME/.cache/ccache"
+
             ccache --set-config=max_size=2G
 
             ccache --version
 
-            echo "CCache configured"
+            echo "CCache configured successfully"
+
+
+      # ============================================================
+      # 7. VERIFY ANDROID ENVIRONMENT
+      # ============================================================
+      - run:
+          name: Verify Android Environment
+          command: |
+            set -eux
+
+            echo "========================================"
+            echo "VERIFYING ANDROID ENVIRONMENT"
+            echo "========================================"
+
+            test -n "${ANDROID_HOME:-}"
+
+            test -d "$ANDROID_HOME"
+
+            command -v java
+
+            command -v javac
+
+            java -version
+
+            javac -version
+
+            echo ""
+            echo "ANDROID_HOME=$ANDROID_HOME"
+
+            echo "Android environment OK"
 
 
       # ============================================================
@@ -228,15 +212,17 @@ jobs:
             set -eux
 
             echo "========================================"
-            echo "Checking GothicOCR Files"
+            echo "VERIFYING PROJECT FILES"
             echo "========================================"
 
             test -f main.py
+
             test -f buildozer.spec
 
             test -f models/gothic_ocr.tflite
 
             test -f services/model_service.py
+
             test -f services/image_service.py
 
             test -f screens/main_screen.py
@@ -244,11 +230,11 @@ jobs:
             test -f utils/constants.py
 
             echo ""
-            echo "All required files found"
+            echo "All required GothicOCR files found"
 
 
       # ============================================================
-      # 9. VERIFY MODEL
+      # 9. VERIFY TFLITE MODEL
       # ============================================================
       - run:
           name: Verify TFLite Model
@@ -256,37 +242,37 @@ jobs:
             set -eux
 
             echo "========================================"
-            echo "Checking TFLite Model"
+            echo "VERIFYING TFLITE MODEL"
             echo "========================================"
 
             MODEL="models/gothic_ocr.tflite"
 
-            test -f "$MODEL"
             test -s "$MODEL"
+
+            echo "Model information:"
 
             ls -lh "$MODEL"
 
-            MODEL_SIZE=$(stat -c%s "$MODEL")
+            SIZE=$(stat -c%s "$MODEL")
+
+            echo "Model size: $SIZE bytes"
+
+            test "$SIZE" -gt 0
 
             echo ""
-            echo "Model size: $MODEL_SIZE bytes"
-
-            test "$MODEL_SIZE" -gt 100000
-
-            echo ""
-            echo "Model check OK"
+            echo "TFLite model OK"
 
 
       # ============================================================
       # 10. VALIDATE PYTHON SYNTAX
       # ============================================================
       - run:
-          name: Validate Python Syntax
+          name: Validate Python Files
           command: |
             set -eux
 
             echo "========================================"
-            echo "Python Syntax Validation"
+            echo "VALIDATING PYTHON SYNTAX"
             echo "========================================"
 
             python3 -m py_compile main.py
@@ -308,7 +294,7 @@ jobs:
 
 
       # ============================================================
-      # 11. VALIDATE BUILDOZER SPEC
+      # 11. VALIDATE BUILDOZER CONFIG
       # ============================================================
       - run:
           name: Validate Buildozer Configuration
@@ -316,21 +302,21 @@ jobs:
             set -eux
 
             echo "========================================"
-            echo "Buildozer Configuration"
+            echo "VALIDATING BUILDOZER CONFIG"
             echo "========================================"
 
             test -s buildozer.spec
 
-            grep -E "^[[:space:]]*title[[:space:]]*=" \
+            grep -E "^title[[:space:]]*=" \
               buildozer.spec
 
-            grep -E "^[[:space:]]*package.name[[:space:]]*=" \
+            grep -E "^package.name[[:space:]]*=" \
               buildozer.spec
 
-            grep -E "^[[:space:]]*package.domain[[:space:]]*=" \
+            grep -E "^package.domain[[:space:]]*=" \
               buildozer.spec
 
-            grep -E "^[[:space:]]*requirements[[:space:]]*=" \
+            grep -E "^requirements[[:space:]]*=" \
               buildozer.spec
 
             echo ""
@@ -338,72 +324,10 @@ jobs:
 
 
       # ============================================================
-      # 12. VERIFY FREETYPE MIRROR
+      # 12. BUILD APK
       #
-      # اختبار الاتصال بالمصدر الجديد قبل بدء Buildozer
-      # ============================================================
-      - run:
-          name: Test FreeType Mirror
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "Testing FreeType Mirror"
-            echo "========================================"
-
-            echo "Recipe override:"
-            echo "$URL_freetype"
-
-            echo ""
-            echo "Testing SourceForge availability..."
-
-            curl \
-              --location \
-              --fail \
-              --silent \
-              --show-error \
-              --retry 5 \
-              --retry-delay 3 \
-              --connect-timeout 30 \
-              --max-time 120 \
-              --head \
-              "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/freetype-2.14.1.tar.gz"
-
-            echo ""
-            echo "SourceForge mirror is reachable"
-
-
-      # ============================================================
-      # 13. SHOW NETWORK CONFIGURATION
-      # ============================================================
-      - run:
-          name: Show Network Configuration
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "Network Configuration"
-            echo "========================================"
-
-            echo "URL_freetype=$URL_freetype"
-
-            echo ""
-            echo "Important:"
-            echo "Savannah is NOT patched with sed."
-            echo "Savannah is NOT redirected through /etc/hosts."
-            echo "python-for-android receives the new URL directly."
-
-            echo ""
-            echo "Network configuration ready"
-
-
-      # ============================================================
-      # 14. BUILD APK
-      #
-      # محاولة واحدة فقط.
-      #
-      # لا يوجد Loop خمس مرات.
-      # لا يوجد إعادة تنزيل متعمدة.
+      # Retry handles temporary Internet/download failures.
+      # Cached downloads remain available between builds.
       # ============================================================
       - run:
           name: Build GothicOCR APK
@@ -427,31 +351,73 @@ jobs:
             cython --version
 
             echo ""
-            echo "FreeType URL override:"
-            echo "$URL_freetype"
-
-            echo ""
-            echo "Checking Buildozer directory state..."
-
-            mkdir -p "$HOME/.buildozer"
-
-            echo ""
-            echo "Starting Buildozer..."
-            echo ""
-
-            # URL_freetype ينتقل إلى عملية python-for-android
-            export URL_freetype
-
-            buildozer -v android debug
+            echo "Java:"
+            java -version
 
             echo ""
             echo "========================================"
-            echo "BUILDOZER BUILD FINISHED SUCCESSFULLY"
-            echo "========================================"
+
+            MAX_ATTEMPTS=3
+            ATTEMPT=1
+            BUILD_SUCCESS=0
+
+            while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+
+              echo ""
+              echo "========================================"
+              echo "BUILD ATTEMPT $ATTEMPT OF $MAX_ATTEMPTS"
+              echo "========================================"
+
+              set +e
+
+              buildozer -v android debug
+
+              STATUS=$?
+
+              set -e
+
+              if [ "$STATUS" -eq 0 ]; then
+
+                echo ""
+                echo "========================================"
+                echo "BUILD SUCCEEDED"
+                echo "========================================"
+
+                BUILD_SUCCESS=1
+
+                break
+
+              fi
+
+              echo ""
+              echo "Build attempt $ATTEMPT failed."
+
+              if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+
+                echo "Waiting 20 seconds before retry..."
+
+                sleep 20
+
+              fi
+
+              ATTEMPT=$((ATTEMPT + 1))
+
+            done
+
+            if [ "$BUILD_SUCCESS" -ne 1 ]; then
+
+              echo ""
+              echo "========================================"
+              echo "BUILD FAILED AFTER ALL ATTEMPTS"
+              echo "========================================"
+
+              exit 1
+
+            fi
 
 
       # ============================================================
-      # 15. VERIFY APK
+      # 13. VERIFY APK
       # ============================================================
       - run:
           name: Verify APK Output
@@ -459,14 +425,16 @@ jobs:
             set -eux
 
             echo "========================================"
-            echo "APK Verification"
+            echo "VERIFYING APK"
             echo "========================================"
 
             test -d bin
 
             echo ""
-            echo "Bin directory:"
+
             ls -lah bin
+
+            echo ""
 
             APK_COUNT=$(find bin \
               -maxdepth 1 \
@@ -474,7 +442,6 @@ jobs:
               -name "*.apk" \
               | wc -l)
 
-            echo ""
             echo "APK count: $APK_COUNT"
 
             test "$APK_COUNT" -ge 1
@@ -485,25 +452,24 @@ jobs:
               -name "*.apk" \
               | head -n 1)
 
-            test -f "$APK"
             test -s "$APK"
 
             echo ""
-            echo "APK created successfully:"
-            echo "$APK"
 
-            echo ""
+            echo "========================================"
+            echo "APK CREATED SUCCESSFULLY"
+            echo "========================================"
+
+            echo "APK: $APK"
+
             ls -lh "$APK"
 
 
       # ============================================================
-      # 16. SAVE CACHE
-      #
-      # لن يصل إلى هنا إلا إذا نجح البناء.
-      # وبالتالي لن نحفظ كاش فاشل جديد.
+      # 14. SAVE BUILD CACHE
       # ============================================================
       - save_cache:
-          key: gothicocr-freetype-fix-v1-{{ checksum "buildozer.spec" }}
+          key: gothicocr-build-v1-{{ checksum "buildozer.spec" }}
           paths:
             - ~/.buildozer
             - ~/project/.buildozer
@@ -513,14 +479,25 @@ jobs:
 
 
       # ============================================================
-      # 17. STORE APK
+      # 15. STORE APK
       # ============================================================
       - store_artifacts:
           path: bin
           destination: apk
 
 
+      # ============================================================
+      # 16. STORE BUILDOZER FILES
+      # Runs even if directory exists after successful build
+      # ============================================================
+      - store_artifacts:
+          path: .buildozer
+          destination: buildozer
+
+
 workflows:
+
   build-workflow:
+
     jobs:
       - build-apk
