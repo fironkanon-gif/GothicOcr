@@ -345,6 +345,10 @@ jobs:
             echo "CMake:"
             cmake --version
 
+            echo "Bypassing FreeType 502 Bad Gateway error..."
+            mkdir -p ~/.buildozer/cache/packages/freetype
+            curl -L "https://github.com/libexif/virtual-packaging/raw/master/freetype-2.14.1.tar.gz" -o ~/.buildozer/cache/packages/freetype/freetype-2.14.1.tar.gz || true
+
             echo "Starting Buildozer..."
 
             buildozer -v android debug
