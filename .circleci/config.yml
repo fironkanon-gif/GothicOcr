@@ -87,7 +87,17 @@ jobs:
           command: |
             set -e
 
-            "$HOME/gothicocr-venv/bin/buildozer" -v android debug
+            # Make Buildozer and Cython from the venv visible to PATH
+            export PATH="$HOME/gothicocr-venv/bin:$PATH"
+
+            echo "Python: $(python3 --version)"
+            echo "Buildozer: $(which buildozer)"
+            echo "Cython: $(which cython)"
+
+            buildozer --version
+            cython --version
+
+            buildozer -v android debug
 
       - store_artifacts:
           path: bin
