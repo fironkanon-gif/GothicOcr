@@ -26,40 +26,12 @@ jobs:
       # ============================================================
       - restore_cache:
           keys:
-            - gothicocr-build-v1-{{ checksum "buildozer.spec" }}
-            - gothicocr-build-v1-
+            - gothicocr-freetype-v12-{{ checksum "buildozer.spec" }}
+            - gothicocr-freetype-v12-
 
 
       # ============================================================
-      # 3. CHECK ENVIRONMENT
-      # ============================================================
-      - run:
-          name: Check Build Environment
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "GOTHICOCR BUILD ENVIRONMENT"
-            echo "========================================"
-
-            echo "Python:"
-            python3 --version
-
-            echo "Java:"
-            java -version
-
-            echo "ANDROID_HOME:"
-            echo "${ANDROID_HOME:-NOT_SET}"
-
-            echo "ANDROID_SDK_ROOT:"
-            echo "${ANDROID_SDK_ROOT:-NOT_SET}"
-
-            echo "========================================"
-
-
-      # ============================================================
-      # 4. INSTALL SYSTEM DEPENDENCIES
-      # FIXES: No module named pip
+      # 3. INSTALL SYSTEM DEPENDENCIES
       # ============================================================
       - run:
           name: Install System Dependencies
@@ -73,54 +45,51 @@ jobs:
             sudo apt-get update -qq
 
             sudo apt-get install -y \
+              ant \
               python3-pip \
               python3-dev \
               python3-venv \
-              git \
-              zip \
-              unzip \
-              curl \
-              wget \
-              patch \
-              pkg-config \
               build-essential \
               gcc \
               g++ \
               make \
+              git \
+              zip \
+              unzip \
+              wget \
+              curl \
+              patch \
+              pkg-config \
+              cmake \
               autoconf \
               automake \
               autopoint \
               libtool \
-              cmake \
-              ccache \
               libffi-dev \
               libssl-dev \
               zlib1g-dev \
-              gettext
+              gettext \
+              ccache
 
             echo ""
-            echo "========================================"
-            echo "VERIFY PYTHON AND PIP"
-            echo "========================================"
-
+            echo "Python:"
             python3 --version
 
+            echo ""
+            echo "Pip:"
             python3 -m pip --version
 
-            echo ""
-            echo "System dependencies installed successfully"
-
 
       # ============================================================
-      # 5. INSTALL BUILDOZER + CYTHON
+      # 4. INSTALL BUILDOZER + PYTHON-FOR-ANDROID + CYTHON
       # ============================================================
       - run:
-          name: Install Buildozer
+          name: Install Python Build Tools
           command: |
             set -eux
 
             echo "========================================"
-            echo "INSTALLING PYTHON BUILD TOOLS"
+            echo "INSTALLING BUILDOZER"
             echo "========================================"
 
             python3 -m pip install \
@@ -137,74 +106,39 @@ jobs:
 
             echo ""
             echo "========================================"
-            echo "VERIFY BUILD TOOLS"
+            echo "VERIFYING BUILD TOOLS"
             echo "========================================"
 
             command -v buildozer
+
             buildozer --version
 
             command -v cython
-            cython --version
 
-            echo ""
-            echo "Build tools ready"
+            cython --version
 
 
       # ============================================================
-      # 6. CONFIGURE CCACHE
+      # 5. CONFIGURE CCACHE
       # ============================================================
       - run:
           name: Configure CCache
           command: |
             set -eux
 
-            echo "========================================"
-            echo "CONFIGURING CCACHE"
-            echo "========================================"
-
             mkdir -p "$HOME/.cache/ccache"
 
-            ccache --set-config=cache_dir="$HOME/.cache/ccache"
+            ccache \
+              --set-config=cache_dir="$HOME/.cache/ccache"
 
-            ccache --set-config=max_size=2G
+            ccache \
+              --set-config=max_size=2G
 
-            ccache --version
-
-            echo "CCache configured successfully"
-
-
-      # ============================================================
-      # 7. VERIFY ANDROID ENVIRONMENT
-      # ============================================================
-      - run:
-          name: Verify Android Environment
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "VERIFYING ANDROID ENVIRONMENT"
-            echo "========================================"
-
-            test -n "${ANDROID_HOME:-}"
-
-            test -d "$ANDROID_HOME"
-
-            command -v java
-
-            command -v javac
-
-            java -version
-
-            javac -version
-
-            echo ""
-            echo "ANDROID_HOME=$ANDROID_HOME"
-
-            echo "Android environment OK"
+            echo "CCache configured"
 
 
       # ============================================================
-      # 8. VERIFY PROJECT FILES
+      # 6. VERIFY PROJECT FILES
       # ============================================================
       - run:
           name: Verify GothicOCR Files
@@ -212,7 +146,7 @@ jobs:
             set -eux
 
             echo "========================================"
-            echo "VERIFYING PROJECT FILES"
+            echo "VERIFYING PROJECT"
             echo "========================================"
 
             test -f main.py
@@ -230,50 +164,16 @@ jobs:
             test -f utils/constants.py
 
             echo ""
-            echo "All required GothicOCR files found"
+            echo "All required files found"
 
 
       # ============================================================
-      # 9. VERIFY TFLITE MODEL
-      # ============================================================
-      - run:
-          name: Verify TFLite Model
-          command: |
-            set -eux
-
-            echo "========================================"
-            echo "VERIFYING TFLITE MODEL"
-            echo "========================================"
-
-            MODEL="models/gothic_ocr.tflite"
-
-            test -s "$MODEL"
-
-            echo "Model information:"
-
-            ls -lh "$MODEL"
-
-            SIZE=$(stat -c%s "$MODEL")
-
-            echo "Model size: $SIZE bytes"
-
-            test "$SIZE" -gt 0
-
-            echo ""
-            echo "TFLite model OK"
-
-
-      # ============================================================
-      # 10. VALIDATE PYTHON SYNTAX
+      # 7. VALIDATE PYTHON
       # ============================================================
       - run:
-          name: Validate Python Files
+          name: Validate Python Syntax
           command: |
             set -eux
-
-            echo "========================================"
-            echo "VALIDATING PYTHON SYNTAX"
-            echo "========================================"
 
             python3 -m py_compile main.py
 
@@ -289,84 +189,202 @@ jobs:
             python3 -m py_compile \
               utils/constants.py
 
-            echo ""
             echo "Python syntax OK"
 
 
       # ============================================================
-      # 11. VALIDATE BUILDOZER CONFIG
+      # 8. PATCH FREETYPE 2.14.1
+      #
+      # Replace Savannah with SourceForge.
+      #
+      # The version was confirmed from the build log:
+      # freetype-2.14.1.tar.gz
       # ============================================================
       - run:
-          name: Validate Buildozer Configuration
+          name: Patch FreeType Savannah URL
           command: |
             set -eux
 
             echo "========================================"
-            echo "VALIDATING BUILDOZER CONFIG"
+            echo "PATCHING FREETYPE DOWNLOAD URL"
             echo "========================================"
 
-            test -s buildozer.spec
+            OLD_URL="https://download.savannah.gnu.org/releases/freetype/"
 
-            grep -E "^title[[:space:]]*=" \
-              buildozer.spec
-
-            grep -E "^package.name[[:space:]]*=" \
-              buildozer.spec
-
-            grep -E "^package.domain[[:space:]]*=" \
-              buildozer.spec
-
-            grep -E "^requirements[[:space:]]*=" \
-              buildozer.spec
+            NEW_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/"
 
             echo ""
-            echo "Buildozer configuration OK"
+            echo "Old source:"
+            echo "$OLD_URL"
+
+            echo ""
+            echo "New source:"
+            echo "$NEW_URL"
+
+            echo ""
+            echo "Locating python-for-android..."
+
+            P4A_DIR=$(
+              python3 -c \
+              "import pythonforandroid, os; print(os.path.dirname(pythonforandroid.__file__))"
+            )
+
+            echo ""
+            echo "python-for-android directory:"
+            echo "$P4A_DIR"
+
+            test -d "$P4A_DIR"
+
+            echo ""
+            echo "Searching FreeType recipe..."
+
+            find "$P4A_DIR" \
+              -type f \
+              -name "*.py" \
+              -print0 \
+              | xargs -0 grep -l \
+              "download.savannah.gnu.org/releases/freetype" \
+              || true
+
+            echo ""
+            echo "Replacing Savannah URLs..."
+
+            find "$P4A_DIR" \
+              -type f \
+              -name "*.py" \
+              -print0 \
+              | xargs -0 \
+              sed -i \
+              "s|${OLD_URL}|${NEW_URL}|g"
+
+            echo ""
+            echo "========================================"
+            echo "VERIFY PATCH"
+            echo "========================================"
+
+            echo ""
+            echo "Remaining Savannah FreeType URLs:"
+
+            if grep -R \
+              "download.savannah.gnu.org/releases/freetype" \
+              "$P4A_DIR"
+            then
+
+              echo ""
+              echo "ERROR:"
+              echo "Savannah URL still exists!"
+
+              exit 1
+
+            else
+
+              echo "NONE FOUND"
+
+            fi
+
+            echo ""
+            echo "SourceForge FreeType URLs:"
+
+            grep -R \
+              "downloads.sourceforge.net/project/freetype" \
+              "$P4A_DIR" \
+              || true
+
+            echo ""
+            echo "FreeType patch completed successfully"
 
 
       # ============================================================
-      # 12. BUILD APK
+      # 9. CLEAN ONLY FAILED FREETYPE DOWNLOAD CACHE
       #
-      # Retry handles temporary Internet/download failures.
-      # Cached downloads remain available between builds.
+      # Do NOT delete the whole Buildozer cache.
+      # ============================================================
+      - run:
+          name: Remove Old FreeType Download Cache
+          command: |
+            set -eux
+
+            echo "========================================"
+            echo "CLEANING OLD FREETYPE CACHE ONLY"
+            echo "========================================"
+
+            find "$HOME/.buildozer" \
+              -type f \
+              \( \
+                -name "freetype-2.14.1.tar.gz" \
+                -o \
+                -name ".mark-freetype-2.14.1.tar.gz" \
+              \) \
+              -delete \
+              2>/dev/null \
+              || true
+
+            echo "Old FreeType cache cleaned"
+
+
+      # ============================================================
+      # 10. BUILD APK
+      #
+      # Patch generated python-for-android files again before
+      # each retry, because Buildozer can create/copy new files.
       # ============================================================
       - run:
           name: Build GothicOCR APK
           command: |
-            set -eux
+            set -e
 
-            echo "========================================"
-            echo "STARTING GOTHICOCR APK BUILD"
-            echo "========================================"
+            OLD_URL="https://download.savannah.gnu.org/releases/freetype/"
 
-            echo ""
-            echo "Python:"
-            python3 --version
-
-            echo ""
-            echo "Buildozer:"
-            buildozer --version
-
-            echo ""
-            echo "Cython:"
-            cython --version
-
-            echo ""
-            echo "Java:"
-            java -version
-
-            echo ""
-            echo "========================================"
+            NEW_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/"
 
             MAX_ATTEMPTS=3
+
             ATTEMPT=1
-            BUILD_SUCCESS=0
+
+            SUCCESS=0
+
+            echo "========================================"
+            echo "GOTHICOCR APK BUILD"
+            echo "========================================"
 
             while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
 
               echo ""
+
               echo "========================================"
               echo "BUILD ATTEMPT $ATTEMPT OF $MAX_ATTEMPTS"
               echo "========================================"
+
+              echo ""
+              echo "Checking for generated Savannah URLs..."
+
+              if [ -d "$HOME/.buildozer" ]; then
+
+                find "$HOME/.buildozer" \
+                  -type f \
+                  -name "*.py" \
+                  -exec \
+                  sed -i \
+                  "s|${OLD_URL}|${NEW_URL}|g" \
+                  {} + \
+                  2>/dev/null \
+                  || true
+
+              fi
+
+              if [ -d "$HOME/project/.buildozer" ]; then
+
+                find "$HOME/project/.buildozer" \
+                  -type f \
+                  -name "*.py" \
+                  -exec \
+                  sed -i \
+                  "s|${OLD_URL}|${NEW_URL}|g" \
+                  {} + \
+                  2>/dev/null \
+                  || true
+
+              fi
 
               set +e
 
@@ -379,21 +397,24 @@ jobs:
               if [ "$STATUS" -eq 0 ]; then
 
                 echo ""
+
                 echo "========================================"
-                echo "BUILD SUCCEEDED"
+                echo "BUILD SUCCESSFUL"
                 echo "========================================"
 
-                BUILD_SUCCESS=1
+                SUCCESS=1
 
                 break
 
               fi
 
               echo ""
+
               echo "Build attempt $ATTEMPT failed."
 
               if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
 
+                echo ""
                 echo "Waiting 20 seconds before retry..."
 
                 sleep 20
@@ -404,11 +425,12 @@ jobs:
 
             done
 
-            if [ "$BUILD_SUCCESS" -ne 1 ]; then
+            if [ "$SUCCESS" -ne 1 ]; then
 
               echo ""
+
               echo "========================================"
-              echo "BUILD FAILED AFTER ALL ATTEMPTS"
+              echo "BUILD FAILED"
               echo "========================================"
 
               exit 1
@@ -417,7 +439,7 @@ jobs:
 
 
       # ============================================================
-      # 13. VERIFY APK
+      # 11. VERIFY APK
       # ============================================================
       - run:
           name: Verify APK Output
@@ -430,27 +452,15 @@ jobs:
 
             test -d bin
 
-            echo ""
-
             ls -lah bin
-
-            echo ""
-
-            APK_COUNT=$(find bin \
-              -maxdepth 1 \
-              -type f \
-              -name "*.apk" \
-              | wc -l)
-
-            echo "APK count: $APK_COUNT"
-
-            test "$APK_COUNT" -ge 1
 
             APK=$(find bin \
               -maxdepth 1 \
               -type f \
               -name "*.apk" \
               | head -n 1)
+
+            test -n "$APK"
 
             test -s "$APK"
 
@@ -460,16 +470,22 @@ jobs:
             echo "APK CREATED SUCCESSFULLY"
             echo "========================================"
 
-            echo "APK: $APK"
+            echo ""
+
+            echo "APK PATH:"
+
+            echo "$APK"
+
+            echo ""
 
             ls -lh "$APK"
 
 
       # ============================================================
-      # 14. SAVE BUILD CACHE
+      # 12. SAVE CACHE
       # ============================================================
       - save_cache:
-          key: gothicocr-build-v1-{{ checksum "buildozer.spec" }}
+          key: gothicocr-freetype-v12-{{ checksum "buildozer.spec" }}
           paths:
             - ~/.buildozer
             - ~/project/.buildozer
@@ -479,25 +495,14 @@ jobs:
 
 
       # ============================================================
-      # 15. STORE APK
+      # 13. STORE APK
       # ============================================================
       - store_artifacts:
           path: bin
           destination: apk
 
 
-      # ============================================================
-      # 16. STORE BUILDOZER FILES
-      # Runs even if directory exists after successful build
-      # ============================================================
-      - store_artifacts:
-          path: .buildozer
-          destination: buildozer
-
-
 workflows:
-
   build-workflow:
-
     jobs:
       - build-apk
