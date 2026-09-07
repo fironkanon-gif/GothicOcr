@@ -13,7 +13,7 @@ jobs:
     steps:
 
       # ============================================================
-      # 1. CHECKOUT
+      # 1. CHECKOUT CODE
       # ============================================================
       - checkout
 
@@ -30,7 +30,7 @@ jobs:
 
 
       # ============================================================
-      # 3. PREPARE SYSTEM & INSTALL TOOLS
+      # 3. PREPARE ENVIRONMENT & INSTALL BUILD TOOLS
       # ============================================================
       - run:
           name: Prepare Environment & Install Buildozer
@@ -51,40 +51,70 @@ jobs:
 
 
       # ============================================================
-      # 4. PATCH FREETYPE RECIPE & PRE-DOWNLOAD (الإصلاح الجذري)
+      # 4. HARD FORCE OVERRIDE SAVANNAH URL (إلغاء نهائي ومسح القديم)
       # ============================================================
       - run:
-          name: Patch FreeType Recipe & Pre-download
+          name: Hard Force Replace Savannah URLs Everywhere
           command: |
             set +e
-            echo "Patching python-for-android FreeType recipe..."
+            echo "=========================================="
+            echo "PURGING OLD RECIPE CACHES & RE-ROUTING URLS"
+            echo "=========================================="
 
-            # 1. تنزيل الحزمة مسبقاً وتجهيزها في الكاش الرئيسي
-            CACHE_DIR="$HOME/.buildozer/cache/packages/freetype"
-            mkdir -p "$CACHE_DIR"
-            SF_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/freetype-2.14.1.tar.gz"
-            curl -L "$SF_URL" -o "$CACHE_DIR/freetype-2.14.1.tar.gz" || true
+            # 1. مسح أي ملفات recipe قديمة مخزنة في الكاش تحتوي على الرابط القديم
+            rm -rf ~/.buildozer/android/platform/python-for-android 2>/dev/null || true
+            rm -rf ~/project/.buildozer/android/platform/python-for-android 2>/dev/null || true
 
-            # 2. تعديل رابط التنزيل داخل كافة ملفات recipe.py الخاصة بـ freetype في النظام
-            P4A_RECIPE_PATH=$(python3 -c "import pythonforandroid; import os; print(os.path.dirname(pythonforandroid.__file__))" 2>/dev/null)/recipes/freetype/__init__.py
-            
-            if [ -f "$P4A_RECIPE_PATH" ]; then
-              echo "Patching $P4A_RECIPE_PATH..."
-              sudo sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' "$P4A_RECIPE_PATH"
-            fi
+            # 2. إنشاء مجلد الـ Local Recipe المحلي وتأكيده
+            mkdir -p ~/project/p4a_recipes/freetype
+            cat << 'EOF' > ~/project/p4a_recipes/freetype/__init__.py
+from pythonforandroid.recipe import Recipe
+
+class FreeTypeRecipe(Recipe):
+    version = '2.14.1'
+    url = 'https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz'
+    built_libraries = {'libfreetype.so': 'objs/.libs'}
+
+recipe = FreeTypeRecipe()
+EOF
+
+            # 3. تعديل شامل لكل الملفات البرمجية داخل مكتبات Python والنظام لمنع Savannah نهائياً
+            OLD_URL="https://download.savannah.gnu.org/releases/freetype/"
+            NEW_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/"
+
+            sudo grep -rnwl "$OLD_URL" /usr/ 2>/dev/null | xargs -r sudo sed -i "s|$OLD_URL|$NEW_URL|g" || true
+            find ~ -type f \( -name "*.py" -o -name "*.pyc" \) -exec sed -i "s|$OLD_URL|$NEW_URL|g" {} + 2>/dev/null || true
+
+            # 4. تنزيل حزمة FreeType مسبقاً وتوزيعها
+            FT_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/freetype-2.14.1.tar.gz"
+            TMP_FILE="/tmp/freetype-2.14.1.tar.gz"
+            curl -L "$FT_URL" -o "$TMP_FILE"
+
+            PATHS=(
+              "$HOME/.buildozer/cache/packages/freetype"
+              "$HOME/.buildozer/android/platform/build-armeabi-v7a_arm64-v8a/packages/freetype"
+              "$HOME/.buildozer/android/platform/build-arm64-v8a/packages/freetype"
+              "$HOME/project/.buildozer/android/platform/build-armeabi-v7a_arm64-v8a/packages/freetype"
+              "$HOME/project/.buildozer/android/platform/build-arm64-v8a/packages/freetype"
+            )
+
+            for DIR in "${PATHS[@]}"; do
+              mkdir -p "$DIR"
+              cp "$TMP_FILE" "$DIR/freetype-2.14.1.tar.gz" 2>/dev/null || true
+              touch "$DIR/.mark-freetype-2.14.1.tar.gz" 2>/dev/null || true
+            done
+
+            echo "Force override complete!"
 
 
       # ============================================================
-      # 5. BUILD APK WITH RETRY LOOP
+      # 5. BUILD APK WITH DYNAMIC HOT-PATCHING
       # ============================================================
       - run:
           name: Build GothicOCR APK
           command: |
             export PIP_BREAK_SYSTEM_PACKAGES=1
             set +e
-
-            # تطبيق Patch مرة أخرى داخل المجلدات الديناميكية التي ينشئها buildozer أحياناً
-            find ~/.buildozer -name "__init__.py" | grep "recipes/freetype" | xargs -r sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' 2>/dev/null || true
 
             MAX_RETRIES=5
             COUNT=1
@@ -94,6 +124,9 @@ jobs:
               echo "----------------------------------------"
               echo "Attempt $COUNT of $MAX_RETRIES..."
               echo "----------------------------------------"
+
+              # التعديل الفوري والديناميكي مجدداً لكل ملف ينشئه buildozer في أوقات التجميع
+              find ~/.buildozer ~/project -type f -name "*.py" -exec sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' {} + 2>/dev/null || true
 
               buildozer -v android debug
               STATUS=$?
@@ -119,17 +152,17 @@ jobs:
       # 6. VERIFY APK
       # ============================================================
       - run:
-          name: Verify APK
+          name: Verify APK Output
           command: |
             set -eux
             test -d bin
             APK=$(find bin -maxdepth 1 -type f -name "*.apk" | head -n 1)
             test -s "$APK"
-            echo "APK created successfully: $APK"
+            echo "APK Created Successfully: $APK"
 
 
       # ============================================================
-      # 7. SAVE GLOBAL BUILD CACHE
+      # 7. SAVE GLOBAL CACHE
       # ============================================================
       - save_cache:
           key: gothicocr-global-cache-v1
@@ -149,9 +182,6 @@ jobs:
           destination: apk
 
 
-# ============================================================
-# WORKFLOWS
-# ============================================================
 workflows:
   build-workflow:
     jobs:
