@@ -17,8 +17,7 @@ jobs:
             echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
             java -version
             python3 --version
-            command -v sdkmanager || true
-            command -v ndk-build || true
+            python3 -m pip --version
 
       - run:
           name: Check GothicOCR Files
