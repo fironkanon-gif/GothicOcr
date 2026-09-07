@@ -8,104 +8,69 @@ jobs:
     working_directory: ~/project
 
     steps:
-
-      # ======================================================
-      # 1. Checkout
-      # ======================================================
       - checkout
 
-      # ======================================================
-      # 2. Restore Python / Buildozer cache
-      # ======================================================
       - restore_cache:
           keys:
-            - gothicocr-build-v1-{{ checksum "buildozer.spec" }}
-            - gothicocr-build-v1-
-            - gothicocr-python-v1
+            - gothicocr-v4-{{ checksum "buildozer.spec" }}
+            - gothicocr-v4-
+            - gothicocr-python-v4
 
-      # ======================================================
-      # 3. Prepare Python Environment
-      #
-      # IMPORTANT:
-      # --system-site-packages allows pip --user to work
-      # inside this virtual environment.
-      # ======================================================
       - run:
           name: Prepare Python Environment
           command: |
             set -e
 
             echo "========================================"
-            echo "Preparing Python environment"
+            echo "Python Environment"
             echo "========================================"
 
             python3 --version
 
-            if [ ! -d "$HOME/gothicocr-venv" ]; then
-              echo "Creating GothicOCR virtual environment..."
-              python3 -m venv --system-site-packages "$HOME/gothicocr-venv"
-            else
-              echo "Using cached GothicOCR virtual environment..."
-            fi
+            sudo apt-get update -qq
 
-            export PATH="$HOME/gothicocr-venv/bin:$PATH"
+            sudo apt-get install -y \
+              python3-pip \
+              python3-dev \
+              build-essential
 
-            python --version
-            python -m pip --version
+            python3 -m pip --version
 
-            echo "Python environment OK"
+            echo "Python environment ready"
 
-      # ======================================================
-      # 4. Install / verify Buildozer + Cython
-      # ======================================================
       - run:
-          name: Prepare Buildozer and Cython
+          name: Install Buildozer and Cython
           command: |
             set -e
 
-            export PATH="$HOME/gothicocr-venv/bin:$PATH"
-
             echo "========================================"
-            echo "Checking Buildozer and Cython"
+            echo "Installing Buildozer and Cython"
             echo "========================================"
 
-            if ! command -v buildozer >/dev/null 2>&1; then
-              echo "Buildozer not found - installing..."
-              python -m pip install \
-                buildozer==1.6.0 \
-                cython
-            else
-              echo "Buildozer already available from cache."
-            fi
-
-            if ! command -v cython >/dev/null 2>&1; then
-              echo "Cython not found - installing..."
-              python -m pip install cython
-            else
-              echo "Cython already available from cache."
-            fi
+            sudo python3 -m pip install \
+              --break-system-packages \
+              buildozer==1.6.0 \
+              cython
 
             echo "----------------------------------------"
             echo "Buildozer:"
+            command -v buildozer
             buildozer --version
 
+            echo "----------------------------------------"
             echo "Cython:"
+            command -v cython
             cython --version
 
-            echo "----------------------------------------"
-            echo "Build tools OK"
+            echo "Build tools ready"
 
-      # ======================================================
-      # 5. Save Python / Buildozer cache
-      # ======================================================
       - save_cache:
-          key: gothicocr-python-v1
+          key: gothicocr-python-v4
           paths:
-            - ~/gothicocr-venv
+            - ~/.cache/pip
+            - ~/.gradle
+            - ~/.buildozer
 
-      # ======================================================
-      # 6. Android Environment Check
-      # ======================================================
       - run:
           name: Check Android Environment
           command: |
@@ -119,6 +84,7 @@ jobs:
             echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
             java -version
+
             python3 --version
 
             test -d "$ANDROID_HOME"
@@ -126,16 +92,13 @@ jobs:
 
             echo "Android environment OK"
 
-      # ======================================================
-      # 7. GothicOCR Files Check
-      # ======================================================
       - run:
           name: Check GothicOCR Files
           command: |
             set -e
 
             echo "========================================"
-            echo "Checking GothicOCR files"
+            echo "GothicOCR Files"
             echo "========================================"
 
             test -f main.py
@@ -148,64 +111,51 @@ jobs:
 
             echo "All required GothicOCR files found"
 
-      # ======================================================
-      # 8. Python Syntax Check
-      # ======================================================
       - run:
           name: Validate Python
           command: |
             set -e
 
-            export PATH="$HOME/gothicocr-venv/bin:$PATH"
-
-            python -m py_compile main.py
-            python -m py_compile services/model_service.py
-            python -m py_compile services/image_service.py
-            python -m py_compile screens/main_screen.py
-            python -m py_compile utils/constants.py
+            python3 -m py_compile main.py
+            python3 -m py_compile services/model_service.py
+            python3 -m py_compile services/image_service.py
+            python3 -m py_compile screens/main_screen.py
+            python3 -m py_compile utils/constants.py
 
             echo "Python syntax OK"
 
-      # ======================================================
-      # 9. Build APK
-      # ======================================================
       - run:
           name: Build GothicOCR APK
           command: |
             set -e
 
-            export PATH="$HOME/gothicocr-venv/bin:$PATH"
-
             echo "========================================"
-            echo "Build GothicOCR APK"
+            echo "GothicOCR APK BUILD"
             echo "========================================"
 
             echo "Python:"
-            python --version
+            python3 --version
 
             echo "Buildozer:"
-            which buildozer
+            command -v buildozer
             buildozer --version
 
             echo "Cython:"
-            which cython
+            command -v cython
             cython --version
 
             echo "Starting Buildozer..."
+
             buildozer -v android debug
 
-      # ======================================================
-      # 10. Save heavy Buildozer cache
-      # ======================================================
       - save_cache:
-          key: gothicocr-build-v1-{{ checksum "buildozer.spec" }}
+          key: gothicocr-v4-{{ checksum "buildozer.spec" }}
           paths:
             - ~/.buildozer
             - ~/project/.buildozer
+            - ~/.gradle
+            - ~/.cache/pip
 
-      # ======================================================
-      # 11. Store APK
-      # ======================================================
       - store_artifacts:
           path: bin
           destination: apk
