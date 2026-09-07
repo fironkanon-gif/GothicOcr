@@ -15,12 +15,12 @@ orientation = portrait
 fullscreen = 0
 
 android.api = 35
-android.minapi = 23
+android.minapi = 24
 android.archs = arm64-v8a
 android.accept_sdk_license = True
 
 android.permissions = READ_MEDIA_IMAGES
-
+p4a.local_recipes = ./p4a_recipes
 [buildozer]
 
 log_level = 2
