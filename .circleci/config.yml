@@ -1,166 +1,152 @@
-version: 2.1
-
 jobs:
-  build-apk:
-    docker:
-      - image: cimg/android:2026.08.1-ndk
+  build-apk:
+    docker:
+      - image: cimg/android:2026.08.1-ndk
 
-    working_directory: ~/project
+    working_directory: ~/project
 
-    steps:
-      - checkout
+    # Set PIP_BREAK_SYSTEM_PACKAGES globally for all steps and subprocesses (including Buildozer)
+    environment:
+      PIP_BREAK_SYSTEM_PACKAGES: "1"
 
-      - restore_cache:
-          keys:
-            - gothicocr-v4-{{ checksum "buildozer.spec" }}
-            - gothicocr-v4-
-            - gothicocr-python-v4
+    steps:
+      - checkout
 
-      - run:
-          name: Prepare Python Environment
-          command: |
-            set -e
+      - restore_cache:
+          keys:
+            - gothicocr-v4-{{ checksum "buildozer.spec" }}
+            - gothicocr-v4-
+            - gothicocr-python-v4
 
-            echo "========================================"
-            echo "Python Environment"
-            echo "========================================"
+      - run:
+          name: Prepare Python Environment
+          command: |
+            set -e
 
-            python3 --version
+            echo "========================================"
+            echo "Python Environment"
+            echo "========================================"
 
-            sudo apt-get update -qq
+            python3 --version
 
-            sudo apt-get install -y \
-              python3-pip \
-              python3-dev \
-              build-essential
+            sudo apt-get update -qq
+            sudo apt-get install -y \
+              python3-pip \
+              python3-dev \
+              build-essential \
+              git \
+              ccache
 
-            python3 -m pip --version
+            python3 -m pip --version
 
-            echo "Python environment ready"
+            echo "Python environment ready"
 
-      - run:
-          name: Install Buildozer and Cython
-          command: |
-            set -e
+      - run:
+          name: Install Buildozer and Cython
+          command: |
+            set -e
 
-            echo "========================================"
-            echo "Installing Buildozer and Cython"
-            echo "========================================"
+            echo "========================================"
+            echo "Installing Buildozer and Cython"
+            echo "========================================"
 
-            sudo python3 -m pip install \
-              --break-system-packages \
-              buildozer==1.6.0 \
-              cython
+            # Environment variable PIP_BREAK_SYSTEM_PACKAGES handles PEP 668 automatically
+            python3 -m pip install --upgrade pip setuptools wheel
+            python3 -m pip install buildozer==1.6.0 cython
 
-            echo "----------------------------------------"
-            echo "Buildozer:"
-            command -v buildozer
-            buildozer --version
+            echo "----------------------------------------"
+            echo "Buildozer:"
+            command -v buildozer
+            buildozer --version
 
-            echo "----------------------------------------"
-            echo "Cython:"
-            command -v cython
-            cython --version
+            echo "----------------------------------------"
+            echo "Cython:"
+            command -v cython
+            cython --version
 
-            echo "Build tools ready"
+            echo "Build tools ready"
 
-      - save_cache:
-          key: gothicocr-python-v4
-          paths:
-            - ~/.cache/pip
-            - ~/.gradle
-            - ~/.buildozer
+      - save_cache:
+          key: gothicocr-python-v4
+          paths:
+            - ~/.cache/pip
+            - ~/.gradle
+            - ~/.buildozer
 
-      - run:
-          name: Check Android Environment
-          command: |
-            set -e
+      - run:
+          name: Check Android Environment
+          command: |
+            set -e
 
-            echo "========================================"
-            echo "Android Environment"
-            echo "========================================"
+            echo "========================================"
+            echo "Android Environment"
+            echo "========================================"
 
-            echo "ANDROID_HOME=$ANDROID_HOME"
-            echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
-            java -version
+            java -version
+            python3 --version
 
-            python3 --version
+            test -d "$ANDROID_HOME"
+            test -d "$ANDROID_SDK_ROOT"
 
-            test -d "$ANDROID_HOME"
-            test -d "$ANDROID_SDK_ROOT"
+            echo "Android environment OK"
 
-            echo "Android environment OK"
+      - run:
+          name: Check GothicOCR Files
+          command: |
+            set -e
 
-      - run:
-          name: Check GothicOCR Files
-          command: |
-            set -e
+            echo "========================================"
+            echo "GothicOCR Files"
+            echo "========================================"
 
-            echo "========================================"
-            echo "GothicOCR Files"
-            echo "========================================"
+            test -f main.py
+            test -f buildozer.spec
+            test -f models/gothic_ocr.tflite
+            test -f services/model_service.py
+            test -f services/image_service.py
+            test -f screens/main_screen.py
+            test -f utils/constants.py
 
-            test -f main.py
-            test -f buildozer.spec
-            test -f models/gothic_ocr.tflite
-            test -f services/model_service.py
-            test -f services/image_service.py
-            test -f screens/main_screen.py
-            test -f utils/constants.py
+            echo "All required GothicOCR files found"
 
-            echo "All required GothicOCR files found"
+      - run:
+          name: Validate Python
+          command: |
+            set -e
 
-      - run:
-          name: Validate Python
-          command: |
-            set -e
+            python3 -m py_compile main.py
+            python3 -m py_compile services/model_service.py
+            python3 -m py_compile services/image_service.py
+            python3 -m py_compile screens/main_screen.py
+            python3 -m py_compile utils/constants.py
 
-            python3 -m py_compile main.py
-            python3 -m py_compile services/model_service.py
-            python3 -m py_compile services/image_service.py
-            python3 -m py_compile screens/main_screen.py
-            python3 -m py_compile utils/constants.py
+            echo "Python syntax OK"
 
-            echo "Python syntax OK"
+      - run:
+          name: Build GothicOCR APK
+          command: |
+            set -e
 
-      - run:
-          name: Build GothicOCR APK
-          command: |
-            set -e
+            echo "========================================"
+            echo "GothicOCR APK BUILD"
+            echo "========================================"
 
-            echo "========================================"
-            echo "GothicOCR APK BUILD"
-            echo "========================================"
+            echo "Starting Buildozer..."
 
-            echo "Python:"
-            python3 --version
+            # Buildozer inherits PIP_BREAK_SYSTEM_PACKAGES=1 for internal pip operations
+            buildozer -v android debug
 
-            echo "Buildozer:"
-            command -v buildozer
-            buildozer --version
+      - save_cache:
+          key: gothicocr-v4-{{ checksum "buildozer.spec" }}
+          paths:
+            - ~/.buildozer
+            - ~/project/.buildozer
+            - ~/.gradle
+            - ~/.cache/pip
 
-            echo "Cython:"
-            command -v cython
-            cython --version
-
-            echo "Starting Buildozer..."
-
-            buildozer -v android debug
-
-      - save_cache:
-          key: gothicocr-v4-{{ checksum "buildozer.spec" }}
-          paths:
-            - ~/.buildozer
-            - ~/project/.buildozer
-            - ~/.gradle
-            - ~/.cache/pip
-
-      - store_artifacts:
-          path: bin
-          destination: apk
-
-workflows:
-  build:
-    jobs:
-      - build-apk
+      - store_artifacts:
+          path: bin
+          destination: apk
