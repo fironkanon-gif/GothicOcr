@@ -1,0 +1,171 @@
+version: 2.1
+
+executors:
+
+  android-executor:
+    docker:
+      - image: cimg/android:2026.08-ndk
+    working_directory: ~/repo
+
+  buildozer-executor:
+    docker:
+      - image: kivy/buildozer:latest
+    working_directory: ~/repo
+
+
+jobs:
+
+  inspect-android-env:
+    executor: android-executor
+
+    steps:
+      - checkout
+
+      - run:
+          name: Inspect Android Environment
+          command: |
+            set -e
+
+            echo "========================================"
+            echo "GOTHIC OCR"
+            echo "ANDROID ENVIRONMENT"
+            echo "========================================"
+
+            echo ""
+            echo "ANDROID_HOME:"
+            echo "${ANDROID_HOME:-NOT SET}"
+
+            echo ""
+            echo "ANDROID_SDK_ROOT:"
+            echo "${ANDROID_SDK_ROOT:-NOT SET}"
+
+            echo ""
+            echo "ANDROID_NDK_HOME:"
+            echo "${ANDROID_NDK_HOME:-NOT SET}"
+
+            echo ""
+            echo "JAVA:"
+            java -version
+
+            echo ""
+            echo "ADB:"
+            adb version
+
+            echo ""
+            echo "========================================"
+            echo "ANDROID ENVIRONMENT CHECK COMPLETE"
+            echo "========================================"
+
+
+  verify-buildozer-env:
+    executor: buildozer-executor
+
+    steps:
+      - checkout
+
+      - run:
+          name: Verify Buildozer Environment
+          command: |
+            set -e
+
+            echo "========================================"
+            echo "GOTHIC OCR"
+            echo "BUILDOZER ENVIRONMENT"
+            echo "========================================"
+
+            echo ""
+            echo "Python:"
+            python3 --version
+
+            echo ""
+            echo "Buildozer:"
+            buildozer --version
+
+            echo ""
+            echo "Python-for-Android:"
+            p4a --version
+
+            echo ""
+            echo "========================================"
+            echo "BUILDOZER ENVIRONMENT CHECK COMPLETE"
+            echo "========================================"
+
+
+  verify-project:
+    executor: buildozer-executor
+
+    steps:
+      - checkout
+
+      - run:
+          name: Verify GothicOCR Project
+          command: |
+            set -e
+
+            echo "========================================"
+            echo "GOTHIC OCR"
+            echo "PROJECT FILE CHECK"
+            echo "========================================"
+
+            cd GothicOCR
+
+            echo ""
+            echo "Project directory:"
+            pwd
+
+            echo ""
+            echo "Checking required files..."
+
+            test -f main.py
+            test -f buildozer.spec
+
+            test -f data/labels.json
+            test -f models/gothic_ocr.tflite
+            test -f fonts/NotoSansGothic-Regular.ttf
+
+            test -f services/__init__.py
+            test -f services/image_service.py
+            test -f services/model_service.py
+            test -f services/text_decoder.py
+
+            echo ""
+            echo "Required files:"
+            echo "PASS"
+
+            echo ""
+            echo "Checking model files..."
+
+            ls -lh models/gothic_ocr.tflite
+            ls -lh data/labels.json
+            ls -lh fonts/NotoSansGothic-Regular.ttf
+
+            echo ""
+            echo "Checking Python files..."
+
+            python3 -m py_compile \
+              main.py \
+              services/__init__.py \
+              services/image_service.py \
+              services/model_service.py \
+              services/text_decoder.py
+
+            echo ""
+            echo "Python syntax:"
+            echo "PASS"
+
+            echo ""
+            echo "========================================"
+            echo "PROJECT CHECK COMPLETE"
+            echo "========================================"
+
+
+workflows:
+
+  prepare-and-check:
+    jobs:
+
+      - inspect-android-env
+
+      - verify-buildozer-env
+
+      - verify-project
