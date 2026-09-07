@@ -1,171 +1,143 @@
+# ============================================================
+# GOTHIC OCR — CIRCLECI CONFIGURATION
+# ============================================================
+
 version: 2.1
-
-executors:
-
-  android-executor:
-    docker:
-      - image: cimg/android:2026.08-ndk
-    working_directory: ~/repo
-
-  buildozer-executor:
-    docker:
-      - image: kivy/buildozer:latest
-    working_directory: ~/repo
-
 
 jobs:
 
-  inspect-android-env:
-    executor: android-executor
+  build_android:
+
+    machine:
+      image: android:current
+
+    resource_class: large.gen2
+
+    working_directory: ~/project
 
     steps:
+
       - checkout
 
       - run:
-          name: Inspect Android Environment
+          name: Check Android build environment
           command: |
             set -e
 
-            echo "========================================"
-            echo "GOTHIC OCR"
-            echo "ANDROID ENVIRONMENT"
-            echo "========================================"
+            echo "=========================================="
+            echo "GOTHIC OCR — ANDROID BUILD ENVIRONMENT"
+            echo "=========================================="
 
-            echo ""
-            echo "ANDROID_HOME:"
-            echo "${ANDROID_HOME:-NOT SET}"
-
-            echo ""
-            echo "ANDROID_SDK_ROOT:"
-            echo "${ANDROID_SDK_ROOT:-NOT SET}"
-
-            echo ""
-            echo "ANDROID_NDK_HOME:"
-            echo "${ANDROID_NDK_HOME:-NOT SET}"
-
-            echo ""
-            echo "JAVA:"
             java -version
-
-            echo ""
-            echo "ADB:"
-            adb version
-
-            echo ""
-            echo "========================================"
-            echo "ANDROID ENVIRONMENT CHECK COMPLETE"
-            echo "========================================"
-
-
-  verify-buildozer-env:
-    executor: buildozer-executor
-
-    steps:
-      - checkout
-
-      - run:
-          name: Verify Buildozer Environment
-          command: |
-            set -e
-
-            echo "========================================"
-            echo "GOTHIC OCR"
-            echo "BUILDOZER ENVIRONMENT"
-            echo "========================================"
-
-            echo ""
-            echo "Python:"
             python3 --version
 
-            echo ""
-            echo "Buildozer:"
-            buildozer --version
+            echo
+            echo "ANDROID SDK:"
+            echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-not-set}}"
 
-            echo ""
-            echo "Python-for-Android:"
-            p4a --version
-
-            echo ""
-            echo "========================================"
-            echo "BUILDOZER ENVIRONMENT CHECK COMPLETE"
-            echo "========================================"
-
-
-  verify-project:
-    executor: buildozer-executor
-
-    steps:
-      - checkout
+            echo
+            echo "=========================================="
 
       - run:
-          name: Verify GothicOCR Project
+          name: Install Buildozer dependencies
           command: |
             set -e
 
-            echo "========================================"
-            echo "GOTHIC OCR"
-            echo "PROJECT FILE CHECK"
-            echo "========================================"
+            sudo apt-get update
+
+            sudo apt-get install -y \
+              python3-pip \
+              python3-venv \
+              git \
+              zip \
+              unzip \
+              autoconf \
+              automake \
+              libtool \
+              pkg-config \
+              zlib1g-dev \
+              libncurses5-dev \
+              libncursesw5-dev \
+              libtinfo6 \
+              cmake \
+              libffi-dev \
+              libssl-dev \
+              gettext
+
+      - run:
+          name: Create Python build environment
+          command: |
+            set -e
+
+            python3 -m venv ~/buildozer-venv
+
+            ~/buildozer-venv/bin/python \
+              -m pip install --upgrade pip setuptools wheel
+
+            ~/buildozer-venv/bin/pip \
+              install buildozer
+
+      - run:
+          name: Validate GothicOCR project
+          command: |
+            set -e
 
             cd GothicOCR
 
-            echo ""
-            echo "Project directory:"
-            pwd
-
-            echo ""
-            echo "Checking required files..."
-
             test -f main.py
             test -f buildozer.spec
-
-            test -f data/labels.json
             test -f models/gothic_ocr.tflite
+            test -f data/labels.json
             test -f fonts/NotoSansGothic-Regular.ttf
 
-            test -f services/__init__.py
             test -f services/image_service.py
             test -f services/model_service.py
             test -f services/text_decoder.py
 
-            echo ""
-            echo "Required files:"
-            echo "PASS"
+            echo "Project structure OK."
 
-            echo ""
-            echo "Checking model files..."
+      - run:
+          name: Validate Buildozer configuration
+          command: |
+            set -e
 
-            ls -lh models/gothic_ocr.tflite
-            ls -lh data/labels.json
-            ls -lh fonts/NotoSansGothic-Regular.ttf
+            cd GothicOCR
 
-            echo ""
-            echo "Checking Python files..."
+            ~/buildozer-venv/bin/buildozer --version
 
-            python3 -m py_compile \
-              main.py \
-              services/__init__.py \
-              services/image_service.py \
-              services/model_service.py \
-              services/text_decoder.py
+            echo
+            echo "Buildozer configuration:"
 
-            echo ""
-            echo "Python syntax:"
-            echo "PASS"
+            grep -E \
+              '^(title|package.name|package.domain|version|requirements|android.api|android.minapi|android.archs|android.ndk|p4a.bootstrap)' \
+              buildozer.spec
 
-            echo ""
-            echo "========================================"
-            echo "PROJECT CHECK COMPLETE"
-            echo "========================================"
+      - run:
+          name: Build GothicOCR APK
+          command: |
+            set -e
 
+            cd GothicOCR
+
+            ~/buildozer-venv/bin/buildozer android debug
+
+      - store_artifacts:
+          path: GothicOCR/bin
+          destination: gothicocr-apk
+
+      - store_artifacts:
+          path: GothicOCR/.buildozer
+          destination: buildozer-build-data
 
 workflows:
 
-  prepare-and-check:
+  build_android_manual:
+
     jobs:
 
-      - inspect-android-env
+      - approve_build:
+          type: approval
 
-      - verify-buildozer-env
-
-      - verify-project
+      - build_android:
+          requires:
+            - approve_build
