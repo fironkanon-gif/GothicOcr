@@ -1,0 +1,8 @@
+.buildozer/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+bin/
+build/
+dist/
