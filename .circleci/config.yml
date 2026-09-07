@@ -30,7 +30,7 @@ jobs:
 
 
       # ============================================================
-      # 3. BLOCK SAVANNAH GNU SITE PERMANENTLY (إلغاء الموقع تماماً)
+      # 3. BLOCK SAVANNAH GNU SITE PERMANENTLY
       # ============================================================
       - run:
           name: Block Broken GNU Domain & Setup Hosts
@@ -76,11 +76,9 @@ jobs:
 
             mkdir -p "$P1" "$P2" "$P3"
 
-            # التنزيل من سيرفر SourceForge السريع والمستقر
             URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/freetype-2.14.1.tar.gz"
             curl -L "$URL" -o "$P1/freetype-2.14.1.tar.gz" || true
 
-            # نسخ الملف وإنشاء ملفات الـ .mark لضمان تجاوز التنزيل
             for DIR in "$P1" "$P2" "$P3"; do
               cp "$P1/freetype-2.14.1.tar.gz" "$DIR/" 2>/dev/null || true
               touch "$DIR/.mark-freetype-2.14.1.tar.gz" 2>/dev/null || true
@@ -157,3 +155,12 @@ jobs:
       - store_artifacts:
           path: bin
           destination: apk
+
+
+# ============================================================
+# WORKFLOWS (تشغيل الـ job بنجاح)
+# ============================================================
+workflows:
+  build-workflow:
+    jobs:
+      - build-apk
