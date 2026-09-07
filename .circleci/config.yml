@@ -19,24 +19,20 @@ jobs:
 
 
       # ============================================================
-      # 2. PURGE OLD CACHES
+      # 2. RESTORE EXISTING BUILD CACHE
       # ============================================================
-      - run:
-          name: Purge Old Caches & Local Recipes
-          command: |
-            set +e
-            rm -rf ~/.buildozer
-            rm -rf ~/project/.buildozer
-            rm -rf ~/project/p4a_recipes
-            rm -rf ~/.cache/pip
-            rm -rf ~/.cache/ccache
+      - restore_cache:
+          keys:
+            - gothicocr-incremental-cache-{{ checksum "buildozer.spec" }}
+            - gothicocr-incremental-cache-
+            - gothicocr-single-run-v1
 
 
       # ============================================================
-      # 3. PREPARE ENVIRONMENT & INSTALL BUILD TOOLS
+      # 3. PREPARE ENVIRONMENT & REDIRECT SAVANNAH TRAFFIC
       # ============================================================
       - run:
-          name: Prepare Environment & Install Buildozer
+          name: Prepare Environment & Block Savannah Domain
           command: |
             set -eux
             sudo apt-get update -qq
@@ -48,39 +44,42 @@ jobs:
             sudo python3 -m pip install --break-system-packages --ignore-installed --upgrade pip setuptools wheel
             sudo python3 -m pip install --break-system-packages buildozer==1.6.0 cython
 
+            # تحويل أي طلب يتجه لـ Savannah إلى SourceForge مباشرة على مستوى النظام
+            echo "104.18.32.7 download.savannah.gnu.org" | sudo tee -a /etc/hosts
+
             mkdir -p "$HOME/.cache/ccache"
             ccache --set-config=cache_dir="$HOME/.cache/ccache"
             ccache --set-config=max_size=2G
 
 
       # ============================================================
-      # 4. PATCH OFFICIAL FREETYPE RECIPE URL DIRECTLY
+      # 4. PATCH ALL P4A RECIPES & SYSTEM FILES
       # ============================================================
       - run:
-          name: Patch Official P4A FreeType Recipe URL
+          name: Absolute Patch for FreeType Recipe
           command: |
             set +e
-            echo "Patching FreeType Recipe URL inside pythonforandroid..."
+            echo "Applying absolute patch to replace Savannah URLs..."
 
+            # تعديل أي ملف في pythonforandroid
             P4A_DIR=$(python3 -c "import pythonforandroid; import os; print(os.path.dirname(pythonforandroid.__file__))" 2>/dev/null)
-            OLD_URL="https://download.savannah.gnu.org/releases/freetype/"
-            NEW_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/"
-
             if [ -d "$P4A_DIR" ]; then
-              sudo find "$P4A_DIR" -type f -name "*.py" -exec sed -i "s|$OLD_URL|$NEW_URL|g" {} +
-              echo "P4A System Recipes patched successfully!"
+              sudo find "$P4A_DIR" -type f -name "*.py" -exec sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' {} +
             fi
 
+            # تعديل الكاش الموجود حالياً إن وجد
+            find ~/.buildozer ~/project -type f -name "*.py" -exec sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' {} + 2>/dev/null || true
+
 
       # ============================================================
-      # 5. BUILD APK (Single Run - No Retries)
+      # 5. RESUME BUILD (استكمال البناء من مكان التوقف)
       # ============================================================
       - run:
-          name: Build GothicOCR APK (Direct Run)
+          name: Resume GothicOCR Build
           command: |
             export PIP_BREAK_SYSTEM_PACKAGES=1
-            
-            # تعديل أي نسخة يتم استنساخها أثناء البناء مسبقاً
+
+            # إجبار التعديل مرة أخرى قبل تشغيل buildozer مباشرة
             find ~/.buildozer ~/project -type f -name "*.py" -exec sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' {} + 2>/dev/null || true
 
             buildozer -v android debug
@@ -100,10 +99,10 @@ jobs:
 
 
       # ============================================================
-      # 7. SAVE CLEAN CACHE
+      # 7. SAVE INCREMENTAL CACHE
       # ============================================================
       - save_cache:
-          key: gothicocr-single-run-v1
+          key: gothicocr-incremental-cache-{{ checksum "buildozer.spec" }}
           paths:
             - ~/.buildozer
             - ~/project/.buildozer
