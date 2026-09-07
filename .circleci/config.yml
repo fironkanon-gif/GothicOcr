@@ -51,41 +51,28 @@ jobs:
 
 
       # ============================================================
-      # 4. HARD FORCE OVERRIDE SAVANNAH URL (إلغاء نهائي ومسح القديم)
+      # 4. PRE-DOWNLOAD & OVERRIDE FREETYPE PACKAGE
       # ============================================================
       - run:
-          name: Hard Force Replace Savannah URLs Everywhere
+          name: Pre-download FreeType & Set Local Recipe
           command: |
             set +e
-            echo "=========================================="
-            echo "PURGING OLD RECIPE CACHES & RE-ROUTING URLS"
-            echo "=========================================="
+            echo "Setting up local recipe and downloads..."
 
-            # 1. مسح أي ملفات recipe قديمة مخزنة في الكاش تحتوي على الرابط القديم
+            # 1. مسح الكاش القديم المتضمن للرابط المعطوب
             rm -rf ~/.buildozer/android/platform/python-for-android 2>/dev/null || true
             rm -rf ~/project/.buildozer/android/platform/python-for-android 2>/dev/null || true
 
-            # 2. إنشاء مجلد الـ Local Recipe المحلي وتأكيده
+            # 2. إنشاء المجلد وملف الـ Recipe المحلي
             mkdir -p ~/project/p4a_recipes/freetype
-            cat << 'EOF' > ~/project/p4a_recipes/freetype/__init__.py
-from pythonforandroid.recipe import Recipe
+            echo "from pythonforandroid.recipe import Recipe" > ~/project/p4a_recipes/freetype/__init__.py
+            echo "class FreeTypeRecipe(Recipe):" >> ~/project/p4a_recipes/freetype/__init__.py
+            echo "    version = '2.14.1'" >> ~/project/p4a_recipes/freetype/__init__.py
+            echo "    url = 'https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz'" >> ~/project/p4a_recipes/freetype/__init__.py
+            echo "    built_libraries = {'libfreetype.so': 'objs/.libs'}" >> ~/project/p4a_recipes/freetype/__init__.py
+            echo "recipe = FreeTypeRecipe()" >> ~/project/p4a_recipes/freetype/__init__.py
 
-class FreeTypeRecipe(Recipe):
-    version = '2.14.1'
-    url = 'https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz'
-    built_libraries = {'libfreetype.so': 'objs/.libs'}
-
-recipe = FreeTypeRecipe()
-EOF
-
-            # 3. تعديل شامل لكل الملفات البرمجية داخل مكتبات Python والنظام لمنع Savannah نهائياً
-            OLD_URL="https://download.savannah.gnu.org/releases/freetype/"
-            NEW_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/"
-
-            sudo grep -rnwl "$OLD_URL" /usr/ 2>/dev/null | xargs -r sudo sed -i "s|$OLD_URL|$NEW_URL|g" || true
-            find ~ -type f \( -name "*.py" -o -name "*.pyc" \) -exec sed -i "s|$OLD_URL|$NEW_URL|g" {} + 2>/dev/null || true
-
-            # 4. تنزيل حزمة FreeType مسبقاً وتوزيعها
+            # 3. تنزيل الحزمة مسبقاً وتوزيعها
             FT_URL="https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/freetype-2.14.1.tar.gz"
             TMP_FILE="/tmp/freetype-2.14.1.tar.gz"
             curl -L "$FT_URL" -o "$TMP_FILE"
@@ -95,7 +82,6 @@ EOF
               "$HOME/.buildozer/android/platform/build-armeabi-v7a_arm64-v8a/packages/freetype"
               "$HOME/.buildozer/android/platform/build-arm64-v8a/packages/freetype"
               "$HOME/project/.buildozer/android/platform/build-armeabi-v7a_arm64-v8a/packages/freetype"
-              "$HOME/project/.buildozer/android/platform/build-arm64-v8a/packages/freetype"
             )
 
             for DIR in "${PATHS[@]}"; do
@@ -104,11 +90,9 @@ EOF
               touch "$DIR/.mark-freetype-2.14.1.tar.gz" 2>/dev/null || true
             done
 
-            echo "Force override complete!"
-
 
       # ============================================================
-      # 5. BUILD APK WITH DYNAMIC HOT-PATCHING
+      # 5. BUILD APK WITH AUTOMATIC RETRY & HOT-PATCH
       # ============================================================
       - run:
           name: Build GothicOCR APK
@@ -125,7 +109,7 @@ EOF
               echo "Attempt $COUNT of $MAX_RETRIES..."
               echo "----------------------------------------"
 
-              # التعديل الفوري والديناميكي مجدداً لكل ملف ينشئه buildozer في أوقات التجميع
+              # تبديل أي رابط ينشأ ديناميكياً أثناء البناء
               find ~/.buildozer ~/project -type f -name "*.py" -exec sed -i 's|https://download.savannah.gnu.org/releases/freetype/|https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/|g' {} + 2>/dev/null || true
 
               buildozer -v android debug
@@ -149,7 +133,7 @@ EOF
 
 
       # ============================================================
-      # 6. VERIFY APK
+      # 6. VERIFY APK OUTPUT
       # ============================================================
       - run:
           name: Verify APK Output
