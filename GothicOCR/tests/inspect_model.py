@@ -15,6 +15,8 @@
 from pathlib import Path
 import sys
 
+import numpy as np
+
 
 # ============================================================
 # MODEL PATH
@@ -122,11 +124,11 @@ def main():
 
         print()
         print(f"Input #{index}")
-        print("  name:       ", tensor["name"])
-        print("  shape:      ", tensor["shape"])
-        print("  dtype:      ", tensor["dtype"])
+        print("  name:        ", tensor["name"])
+        print("  shape:       ", tensor["shape"])
+        print("  dtype:       ", tensor["dtype"])
         print("  quantization:", tensor["quantization"])
-        print("  index:      ", tensor["index"])
+        print("  index:       ", tensor["index"])
 
     # ========================================================
     # OUTPUT
@@ -147,11 +149,11 @@ def main():
 
         print()
         print(f"Output #{index}")
-        print("  name:       ", tensor["name"])
-        print("  shape:      ", tensor["shape"])
-        print("  dtype:      ", tensor["dtype"])
+        print("  name:        ", tensor["name"])
+        print("  shape:       ", tensor["shape"])
+        print("  dtype:       ", tensor["dtype"])
         print("  quantization:", tensor["quantization"])
-        print("  index:      ", tensor["index"])
+        print("  index:       ", tensor["index"])
 
     # ========================================================
     # EXPECTED MODEL
@@ -191,6 +193,10 @@ def main():
 
     errors = []
 
+    # --------------------------------------------------------
+    # Validate number of tensors
+    # --------------------------------------------------------
+
     if len(input_details) != 1:
 
         errors.append(
@@ -205,9 +211,9 @@ def main():
             f"found {len(output_details)}."
         )
 
-    # --------------------------------------------------------
-    # Validate input
-    # --------------------------------------------------------
+    # ========================================================
+    # VALIDATE INPUT
+    # ========================================================
 
     if len(input_details) == 1:
 
@@ -230,23 +236,17 @@ def main():
                 f"{expected_input_shape}"
             )
 
-        if actual_input_dtype != "float32":
+        if actual_input_dtype != np.float32:
 
-            dtype_name = str(
-                actual_input_dtype
+            errors.append(
+                "Input dtype mismatch: "
+                f"{actual_input_dtype} != "
+                "float32"
             )
 
-            # NumPy dtype comparison
-            if input_details[0]["dtype"].name != "float32":
-
-                errors.append(
-                    "Input dtype mismatch: "
-                    f"{dtype_name} != float32"
-                )
-
-    # --------------------------------------------------------
-    # Validate output
-    # --------------------------------------------------------
+    # ========================================================
+    # VALIDATE OUTPUT
+    # ========================================================
 
     if len(output_details) == 1:
 
@@ -269,11 +269,12 @@ def main():
                 f"{expected_output_shape}"
             )
 
-        if output_details[0]["dtype"].name != "float32":
+        if actual_output_dtype != np.float32:
 
             errors.append(
                 "Output dtype mismatch: "
-                f"{actual_output_dtype} != float32"
+                f"{actual_output_dtype} != "
+                "float32"
             )
 
     # ========================================================
