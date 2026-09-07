@@ -1,6 +1,12 @@
+# ============================================================
+# GOTHIC OCR — MAIN APPLICATION
+# ============================================================
+
 from pathlib import Path
+import threading
 
 from kivy.app import App
+from kivy.clock import mainthread
 from kivy.core.text import LabelBase
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -9,7 +15,13 @@ from kivy.uix.image import Image
 from kivy.uix.label import Label
 
 
-ROOT = Path(__file__).resolve().parent
+# ============================================================
+# PATHS
+# ============================================================
+
+ROOT = Path(
+    __file__
+).resolve().parent
 
 FONT_PATH = (
     ROOT
@@ -17,8 +29,22 @@ FONT_PATH = (
     / "NotoSansGothic-Regular.ttf"
 )
 
+MODEL_PATH = (
+    ROOT
+    / "models"
+    / "gothic_ocr.tflite"
+)
+
+
+# ============================================================
+# APPLICATION
+# ============================================================
 
 class GothicOCRApp(App):
+
+    # ========================================================
+    # BUILD
+    # ========================================================
 
     def build(self):
 
@@ -26,11 +52,33 @@ class GothicOCRApp(App):
 
         self.selected_image = None
 
-        if FONT_PATH.is_file():
+        # ----------------------------------------------------
+        # OCR service
+        #
+        # يتم إنشاؤه عند أول تحليل حتى لا نثقل
+        # تشغيل الواجهة مباشرة.
+        # ----------------------------------------------------
+
+        self.ocr = None
+
+        # ====================================================
+        # FONT
+        # ====================================================
+
+        self.gothic_font_available = (
+            FONT_PATH.is_file()
+        )
+
+        if self.gothic_font_available:
+
             LabelBase.register(
                 name="Gothic",
                 fn_regular=str(FONT_PATH),
             )
+
+        # ====================================================
+        # ROOT LAYOUT
+        # ====================================================
 
         self.root_box = BoxLayout(
             orientation="vertical",
@@ -38,25 +86,48 @@ class GothicOCRApp(App):
             spacing=8,
         )
 
+        # ====================================================
+        # STATUS
+        # ====================================================
+
         self.status = Label(
             text="جاهز لاختيار صورة",
             size_hint_y=None,
             height=45,
         )
 
+        # ====================================================
+        # IMAGE PREVIEW
+        # ====================================================
+
         self.preview = Image(
             allow_stretch=True,
             keep_ratio=True,
         )
 
+        # ====================================================
+        # RESULT
+        # ====================================================
+
         self.result = Label(
             text="",
             font_name=(
                 "Gothic"
-                if FONT_PATH.is_file()
+                if self.gothic_font_available
                 else "Roboto"
             ),
+            font_size="20sp",
+            halign="center",
+            valign="middle",
         )
+
+        self.result.bind(
+            size=self._update_result_text_size
+        )
+
+        # ====================================================
+        # GALLERY BUTTON
+        # ====================================================
 
         self.gallery_button = Button(
             text="🖼 اختيار صورة",
@@ -68,6 +139,10 @@ class GothicOCRApp(App):
             on_release=self.choose_gallery
         )
 
+        # ====================================================
+        # CAMERA BUTTON
+        # ====================================================
+
         self.camera_button = Button(
             text="📷 التقاط صورة",
             size_hint_y=None,
@@ -77,6 +152,10 @@ class GothicOCRApp(App):
         self.camera_button.bind(
             on_release=self.capture_camera
         )
+
+        # ====================================================
+        # ANALYZE BUTTON
+        # ====================================================
 
         self.analyze_button = Button(
             text="🤖 تحليل الصورة",
@@ -88,9 +167,32 @@ class GothicOCRApp(App):
             on_release=self.analyze
         )
 
+        # ====================================================
+        # SHOW MAIN SCREEN
+        # ====================================================
+
         self._show_main_layout()
 
         return self.root_box
+
+    # ========================================================
+    # RESULT TEXT SIZE
+    # ========================================================
+
+    def _update_result_text_size(
+        self,
+        instance,
+        size,
+    ):
+
+        instance.text_size = (
+            size[0] - 20,
+            None,
+        )
+
+    # ========================================================
+    # MAIN LAYOUT
+    # ========================================================
 
     def _show_main_layout(self):
 
@@ -120,6 +222,10 @@ class GothicOCRApp(App):
             self.result
         )
 
+    # ========================================================
+    # CHOOSE IMAGE FROM GALLERY
+    # ========================================================
+
     def choose_gallery(self, *_):
 
         chooser = FileChooserListView(
@@ -128,7 +234,8 @@ class GothicOCRApp(App):
                 "*.jpg",
                 "*.jpeg",
                 "*.webp",
-            ]
+            ],
+            multiselect=False,
         )
 
         chooser.bind(
@@ -141,7 +248,13 @@ class GothicOCRApp(App):
             chooser
         )
 
-        self.status.text = "اختاري صورة..."
+        self.status.text = (
+            "اختاري صورة..."
+        )
+
+    # ========================================================
+    # IMAGE SELECTED
+    # ========================================================
 
     def _selected(
         self,
@@ -150,9 +263,32 @@ class GothicOCRApp(App):
     ):
 
         if not selection:
+
             return
 
-        self.selected_image = selection[0]
+        selected_path = selection[0]
+
+        if not Path(
+            selected_path
+        ).is_file():
+
+            self.status.text = (
+                "تعذر الوصول إلى الصورة."
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # Save selected image
+        # ----------------------------------------------------
+
+        self.selected_image = (
+            selected_path
+        )
+
+        # ----------------------------------------------------
+        # Preview
+        # ----------------------------------------------------
 
         self.preview.source = (
             self.selected_image
@@ -160,11 +296,21 @@ class GothicOCRApp(App):
 
         self.preview.reload()
 
+        # ----------------------------------------------------
+        # Reset previous result
+        # ----------------------------------------------------
+
+        self.result.text = ""
+
         self.status.text = (
             "تم اختيار الصورة بنجاح"
         )
 
         self._show_main_layout()
+
+    # ========================================================
+    # CAMERA
+    # ========================================================
 
     def capture_camera(self, *_):
 
@@ -172,6 +318,10 @@ class GothicOCRApp(App):
             "الكاميرا سيتم ربطها "
             "في مرحلة Android Native."
         )
+
+    # ========================================================
+    # START ANALYSIS
+    # ========================================================
 
     def analyze(self, *_):
 
@@ -183,39 +333,161 @@ class GothicOCRApp(App):
 
             return
 
+        # ----------------------------------------------------
+        # Prevent multiple simultaneous analyses
+        # ----------------------------------------------------
+
+        if self.analyze_button.disabled:
+
+            return
+
         self.status.text = (
-            "جاري تجهيز الصورة..."
+            "جاري التحليل واستخراج النص..."
         )
+
+        self.result.text = ""
+
+        self.analyze_button.disabled = True
+        self.gallery_button.disabled = True
+        self.camera_button.disabled = True
+
+        image_path = (
+            self.selected_image
+        )
+
+        # ----------------------------------------------------
+        # Background thread
+        # ----------------------------------------------------
+
+        threading.Thread(
+            target=self._run_inference_thread,
+            args=(image_path,),
+            daemon=True,
+        ).start()
+
+    # ========================================================
+    # BACKGROUND INFERENCE
+    # ========================================================
+
+    def _run_inference_thread(
+        self,
+        image_path,
+    ):
 
         try:
 
-            from services.image_service import (
-                ImageService,
-            )
+            # =================================================
+            # LOAD OCR SERVICE
+            # =================================================
 
-            image_service = ImageService()
+            if self.ocr is None:
 
-            prepared_input, metadata = (
-                image_service.load_and_prepare(
-                    self.selected_image
+                from services.model_service import (
+                    GothicOCR
                 )
+
+                self.ocr = GothicOCR(
+                    MODEL_PATH
+                )
+
+            # =================================================
+            # RUN COMPLETE OCR PIPELINE
+            # =================================================
+
+            result = self.ocr.predict(
+                image_path
             )
 
-            self.status.text = (
-                "تم تجهيز الصورة بنجاح."
+            # -------------------------------------------------
+            # Extract text
+            # -------------------------------------------------
+
+            recognized_text = result.get(
+                "text",
+                "",
             )
 
-            self.result.text = (
-                f"Input shape: "
-                f"{prepared_input.shape}"
+            if not recognized_text:
+
+                recognized_text = (
+                    "لم يتم العثور على نص."
+                )
+
+            self._update_ui_success(
+                recognized_text
             )
 
         except Exception as exc:
 
-            self.status.text = (
-                f"خطأ: {exc}"
+            self._update_ui_error(
+                str(exc)
             )
 
+    # ========================================================
+    # SUCCESS UI UPDATE
+    # ========================================================
+
+    @mainthread
+    def _update_ui_success(
+        self,
+        recognized_text,
+    ):
+
+        self.status.text = (
+            "تم التحليل بنجاح!"
+        )
+
+        self.result.text = (
+            recognized_text
+        )
+
+        self.analyze_button.disabled = False
+        self.gallery_button.disabled = False
+        self.camera_button.disabled = False
+
+    # ========================================================
+    # ERROR UI UPDATE
+    # ========================================================
+
+    @mainthread
+    def _update_ui_error(
+        self,
+        error_msg,
+    ):
+
+        self.status.text = (
+            f"خطأ أثناء التحليل: "
+            f"{error_msg}"
+        )
+
+        self.analyze_button.disabled = False
+        self.gallery_button.disabled = False
+        self.camera_button.disabled = False
+
+    # ========================================================
+    # APP SHUTDOWN
+    # ========================================================
+
+    def on_stop(self):
+
+        if self.ocr is not None:
+
+            try:
+
+                self.ocr.close()
+
+            except Exception:
+
+                pass
+
+            finally:
+
+                self.ocr = None
+
+
+# ============================================================
+# ENTRY POINT
+# ============================================================
 
 if __name__ == "__main__":
 
